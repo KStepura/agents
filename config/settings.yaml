@@ -1,0 +1,59 @@
+# Конфигурация мультиагентной системы для Kaggle-регрессии (MSE)
+
+project:
+  name: mws-ai-agents-2026
+  competition_url: "https://www.kaggle.com/t/88dbc788cead475494fc76413a69f7ee"
+  metric: MSE
+  baseline_mse_to_beat: 10986.9346   # исходный baseline
+  best_mse_achieved: 10578.7835     # лучший достигнутый результат (обновить после новых запусков)
+  best_run:                          # конфиг лучшего запуска (для воспроизведения)
+    model: lightgbm
+    n_estimators: 300
+    max_depth: 8
+    # команда: python scripts/run_pipeline_manual.py --data-dir data --model lightgbm --n-estimators 300 --max-depth 8
+
+paths:
+  data_dir: "data"           # каталог с train.csv, test.csv, sample_submission.csv
+  artifacts_dir: "artifacts"
+  submissions_dir: "submissions"
+  knowledge_dir: "knowledge"
+
+# LLM (OpenRouter)
+llm:
+  provider: openrouter
+  base_url: "https://openrouter.ai/api/v1"
+  model: "qwen/qwen-2.5-72b-instruct"   # или другой через OpenRouter
+  api_key_env: OPENROUTER_API_KEY
+  temperature: 0.2
+  max_tokens: 4096
+
+# RAG
+rag:
+  vector_store: chroma       # chroma | faiss
+  embedding_model: "sentence-transformers/all-MiniLM-L6-v2"  # или через API
+  top_k: 5
+
+# Агенты
+agents:
+  explorer:
+    system_prompt_file: "config/prompts/explorer_system.txt"
+  engineer:
+    system_prompt_file: "config/prompts/engineer_system.txt"
+  builder:
+    system_prompt_file: "config/prompts/builder_system.txt"
+    critic_max_iterations: 3
+    mse_threshold: null     # при желании: перезапуск, если MSE > порога
+  coordinator:
+    system_prompt_file: "config/prompts/coordinator_system.txt"
+
+# Безопасность
+security:
+  allowed_data_dirs: ["data", "artifacts", "submissions"]
+  max_file_size_mb: 500
+  forbid_exec: true
+
+# Оценка
+evaluation:
+  val_ratio: 0.2
+  cv_folds: 5
+  random_state: 42
