@@ -2,18 +2,16 @@
 
 ## Улучшение MSE
 
-- Подбор гиперпараметров: `--learning-rate`, `--n-estimators`, `--max-depth` для LightGBM/XGBoost; `--alpha` для Ridge.
-- Другие модели и ансамбли (усреднение предсказаний нескольких моделей).
-- Доработка фичей в `src/tools/feature_tools.py`: целевое кодирование категорий, новые признаки (агрегаты, бины, извлечение из дат).
-- Обучение финальной модели на 100% train перед генерацией submission.
+- Реализовано: `te_freq`, редкие категории → `__OTHER__` (`pipeline.rare_category_min_count`), CV / full-train, **сетка + Cartesian**, **Optuna** (`hparam_search.mode: optuna`), **K-fold blend** на test (`evaluation.ensemble`), CatBoost.
+- Дальше: стекинг по OOF, ансамбли разных семейств, псевдо-лейблы.
 
-Новые эксперименты фиксируются в [docs/RESULTS.md](RESULTS.md) (модель, параметры, Val MSE, команда).
+Новые эксперименты — в [docs/RESULTS.md](RESULTS.md) и `artifacts/experiments.jsonl`.
 
 ## Развитие системы
 
-- **RAG:** индексация документов в `knowledge/`, подключение retriever к Explorer (и при необходимости к Engineer).
-- **Память экспериментов:** логирование каждого запуска (конфиг, Val MSE, пути) в `src/memory/experiments.py` для сравнения конфигураций.
-- **Benchmarking:** скрипт или агент для запуска нескольких конфигураций и сводной таблицы MSE (`src/evaluation/benchmark.py`).
-- **Безопасность:** проверка всех вызовов инструментов через `security/validation.py` и `security/guardrails.py`; логирование вызовов для мониторинга.
+- **RAG:** `knowledge/`, `scripts/build_rag_index.py`, Explorer; сравнение — `scripts/compare_architectures.py`.
+- **Память экспериментов:** `artifacts/experiments.jsonl` — в т.ч. `agent_metrics`, `hparam_mode` (`grid` / `optuna`), `hparam_*`.
+- **Builder:** Critic, детерминированный финал, опционально **ensemble.kfold_blend_test**.
+- **Benchmarking ML:** `scripts/run_benchmark.py`.
 
-Подробное описание архитектуры и критериев — в [ARCHITECTURE.md](../ARCHITECTURE.md).
+Подробнее — [ARCHITECTURE.md](../ARCHITECTURE.md).

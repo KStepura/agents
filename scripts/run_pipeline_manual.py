@@ -4,7 +4,8 @@
 
 Запуск из корня проекта:
   python scripts/run_pipeline_manual.py
-  python scripts/run_pipeline_manual.py --data-dir data --model ridge
+  python scripts/run_pipeline_manual.py --data-dir data --model lightgbm --full-train
+  python scripts/run_pipeline_manual.py --cv-folds 5 --full-train --model lightgbm
 """
 
 from __future__ import annotations
@@ -13,7 +14,6 @@ import argparse
 import sys
 from pathlib import Path
 
-# Добавляем корень проекта в путь
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
@@ -23,13 +23,28 @@ def main() -> None:
     parser.add_argument("--data-dir", default="data", help="Directory with train.csv, test.csv")
     parser.add_argument("--artifacts-dir", default="artifacts", help="Output for pipeline, models")
     parser.add_argument("--submissions-dir", default="submissions", help="Output for submission CSV")
-    parser.add_argument("--model", default="ridge", choices=["ridge", "random_forest", "xgboost", "lightgbm"])
+    parser.add_argument(
+        "--model",
+        default="lightgbm",
+        choices=["ridge", "random_forest", "xgboost", "lightgbm", "catboost"],
+    )
     parser.add_argument("--val-ratio", type=float, default=0.2)
     parser.add_argument("--config", default=None, help="Optional YAML config (uses paths from it)")
-    # Гиперпараметры для деревьев / бустинга (игнорируются для ridge)
-    parser.add_argument("--n-estimators", type=int, default=None, help="e.g. 200, 300 (RF/XGB/LGB)")
-    parser.add_argument("--max-depth", type=int, default=None, help="e.g. 8, 12 (RF/XGB/LGB)")
-    parser.add_argument("--learning-rate", type=float, default=None, help="e.g. 0.05 (XGB/LGB)")
+    parser.add_argument(
+        "--encoding",
+        default="te_freq",
+        choices=["te_freq", "ohe"],
+        help="te_freq: target+frequency encoding (default); ohe: legacy one-hot",
+    )
+    parser.add_argument("--cv-folds", type=int, default=0, help="If >=2, report K-fold CV MSE on train")
+    parser.add_argument(
+        "--full-train",
+        action="store_true",
+        help="Train on 100%% of train rows for final submission (recommended with Kaggle)",
+    )
+    parser.add_argument("--n-estimators", type=int, default=None, help="e.g. 200, 300 (RF/XGB/LGB/Cat)")
+    parser.add_argument("--max-depth", type=int, default=None, help="e.g. 8, 12")
+    parser.add_argument("--learning-rate", type=float, default=None, help="e.g. 0.05 (XGB/LGB/Cat)")
     parser.add_argument("--alpha", type=float, default=None, help="Ridge regularization (ridge only)")
     args = parser.parse_args()
 
@@ -44,7 +59,6 @@ def main() -> None:
         print(f"Error: test.csv not found in {data_dir}")
         sys.exit(1)
 
-    # Разрешённые директории (относительно текущей рабочей директории)
     allowed = [str(Path(p).resolve()) for p in [args.data_dir, args.artifacts_dir, args.submissions_dir]]
 
     from src.tools import feature_tools
@@ -57,12 +71,12 @@ def main() -> None:
 
     print("1. Fitting preprocessor...")
     feature_tools.fit_preprocessor(
-        config={"pipeline_save_path": pipeline_path},
+        config={"pipeline_save_path": pipeline_path, "encoding": args.encoding},
         train_path=train_csv,
         target_col=target_col,
         allowed_dirs=allowed,
     )
-    print(f"   Saved: {pipeline_path}")
+    print(f"   Saved: {pipeline_path} (encoding={args.encoding})")
 
     print("2. Transforming train and test...")
     out = feature_tools.transform_train_test(
@@ -88,7 +102,8 @@ def main() -> None:
     if params:
         print(f"   Params: {params}")
 
-    print("3. Training regressor...")
+    cv_folds = args.cv_folds if args.cv_folds >= 2 else None
+    print("3. Training regressor (with optional CV)...")
     result = model_tools.train_regressor(
         name=args.model,
         params=params,
@@ -99,8 +114,20 @@ def main() -> None:
         allowed_dirs=allowed,
         val_ratio=args.val_ratio,
         random_state=42,
+        cv_folds=cv_folds,
+        fit_full_train=args.full_train,
     )
-    print(f"   Val MSE: {result['val_mse']:.4f}")
+
+    if result.get("cv_mse_mean") is not None:
+        print(
+            f"   CV MSE: mean={result['cv_mse_mean']:.4f}, std={result.get('cv_mse_std', 0):.4f}"
+        )
+    if result.get("val_mse") is not None:
+        print(f"   Val MSE (holdout or CV proxy): {result['val_mse']:.4f}")
+    elif not args.full_train:
+        print(f"   Val MSE: {result.get('val_mse')}")
+    else:
+        print("   Val MSE: N/A (full-train mode; use CV line above if --cv-folds set)")
     print(f"   Model: {result['model_path']}")
 
     print("4. Writing submission...")
@@ -115,14 +142,36 @@ def main() -> None:
     print(f"   Submission: {path}")
 
     print("Done.")
-    print(f"  Val MSE = {result['val_mse']:.4f}")
+    if result.get("val_mse") is not None:
+        print(f"  Val MSE = {result['val_mse']:.4f}")
     print(f"  Submission file: {path}")
 
     baseline = 10986.9346
-    if result["val_mse"] < baseline:
-        print(f"  Baseline beaten: Val MSE {result['val_mse']:.4f} < {baseline}")
-    else:
-        print(f"  Baseline to beat: {baseline} (current Val MSE {result['val_mse']:.4f})")
+    vm = result.get("val_mse")
+    if vm is not None and vm < baseline:
+        print(f"  Baseline beaten: Val MSE {vm:.4f} < {baseline}")
+    elif vm is not None:
+        print(f"  Baseline to beat: {baseline} (current Val MSE {vm:.4f})")
+
+    try:
+        from src.memory.experiments import save_experiment
+
+        log = save_experiment(
+            None,
+            {
+                "script": "run_pipeline_manual",
+                "model": args.model,
+                "encoding": args.encoding,
+                "cv_folds": args.cv_folds,
+                "full_train": args.full_train,
+            },
+            vm,
+            str(path),
+            str(artifacts_dir),
+        )
+        print(f"  Experiment log: {log}")
+    except Exception:
+        pass
 
 
 if __name__ == "__main__":

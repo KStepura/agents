@@ -32,6 +32,25 @@ def get_client(llm_config: dict) -> "OpenAI":
     )
 
 
+def _empty_usage() -> dict[str, int]:
+    return {
+        "prompt_tokens": 0,
+        "completion_tokens": 0,
+        "total_tokens": 0,
+        "llm_api_calls": 0,
+    }
+
+
+def _merge_usage(acc: dict[str, int], response: Any) -> None:
+    u = getattr(response, "usage", None)
+    if u is None:
+        return
+    acc["prompt_tokens"] += int(getattr(u, "prompt_tokens", 0) or 0)
+    acc["completion_tokens"] += int(getattr(u, "completion_tokens", 0) or 0)
+    acc["total_tokens"] += int(getattr(u, "total_tokens", 0) or 0)
+    acc["llm_api_calls"] += 1
+
+
 def run_chat_with_tools(
     client: "OpenAI",
     *,
@@ -43,9 +62,10 @@ def run_chat_with_tools(
     max_steps: int = 15,
     temperature: float = 0.2,
     max_tokens: int = 4096,
-) -> tuple[str, list[dict]]:
+) -> tuple[str, list[dict], dict[str, int]]:
     """
-    Run chat with tool use loop. Returns (final assistant text, full messages).
+    Run chat with tool use loop. Returns (final assistant text, full messages, usage).
+    usage: prompt_tokens, completion_tokens, total_tokens, llm_api_calls.
     tool_executor(name, arguments_dict) -> result string.
     """
     messages: list[dict] = [
@@ -55,6 +75,7 @@ def run_chat_with_tools(
     tools = [{"type": "function", "function": f} for f in tools_schema]
     step = 0
     final_text = ""
+    usage = _empty_usage()
 
     while step < max_steps:
         response = client.chat.completions.create(
@@ -64,6 +85,7 @@ def run_chat_with_tools(
             temperature=temperature,
             max_tokens=max_tokens,
         )
+        _merge_usage(usage, response)
         choice = response.choices[0]
         msg = choice.message
         if msg.content:
@@ -103,4 +125,4 @@ def run_chat_with_tools(
             )
         step += 1
 
-    return final_text, messages
+    return final_text, messages, usage

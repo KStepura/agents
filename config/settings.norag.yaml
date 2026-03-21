@@ -1,0 +1,89 @@
+# Как settings.yaml, но RAG выключен — для сравнения сценариев (Explorer без RAG-контекста).
+
+project:
+  name: mws-ai-agents-2026
+  competition_url: "https://www.kaggle.com/t/88dbc788cead475494fc76413a69f7ee"
+  metric: MSE
+  baseline_mse_to_beat: 10986.9346
+  best_mse_achieved: 10578.7835
+  best_run:
+    model: lightgbm
+    n_estimators: 300
+    max_depth: 8
+
+paths:
+  data_dir: "data"
+  artifacts_dir: "artifacts"
+  submissions_dir: "submissions"
+  knowledge_dir: "knowledge"
+
+pipeline:
+  encoding: te_freq
+  rare_category_min_count: 3
+
+llm:
+  provider: openrouter
+  base_url: "https://openrouter.ai/api/v1"
+  model: "qwen/qwen-2.5-72b-instruct"
+  api_key_env: OPENROUTER_API_KEY
+  temperature: 0.2
+  max_tokens: 4096
+
+rag:
+  enabled: false
+  persist_path: "artifacts/chroma_rag"
+  embedding_model: "sentence-transformers/all-MiniLM-L6-v2"
+  top_k: 5
+
+agents:
+  explorer:
+    system_prompt_file: "config/prompts/explorer_system.txt"
+  engineer:
+    system_prompt_file: "config/prompts/engineer_system.txt"
+  builder:
+    system_prompt_file: "config/prompts/builder_system.txt"
+    critic_max_iterations: 3
+    mse_threshold: null
+    critic_iterate_without_threshold: false
+
+security:
+  allowed_data_dirs: ["data", "artifacts", "submissions"]
+  max_file_size_mb: 500
+  forbid_exec: true
+
+evaluation:
+  val_ratio: 0.2
+  cv_folds: 5
+  fit_full_train: true
+  random_state: 42
+  hparam_search:
+    mode: optuna
+    enabled: true
+    use_best_only: true
+    eval_cv_folds: 3
+    optuna:
+      n_trials: 28
+      model: lightgbm
+      n_estimators_low: 150
+      n_estimators_high: 500
+      max_depth_low: 4
+      max_depth_high: 12
+      learning_rate_low: 0.02
+      learning_rate_high: 0.2
+      num_leaves_low: 16
+      num_leaves_high: 127
+      min_child_samples_low: 5
+      min_child_samples_high: 100
+      seed: 42
+    selection_policy:
+      prefer_boosting: true
+      tie_relative_tolerance: 0.05
+  ensemble:
+    enabled: true
+    kfold_blend_test: true
+    n_folds: 5
+
+robustness:
+  clip_predictions: false
+  clip_quantiles: [0.005, 0.995]
+  clip_features_to_train_range: false

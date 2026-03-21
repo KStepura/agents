@@ -5,18 +5,17 @@ All inputs must be validated (paths under allowed dirs, no path traversal).
 
 from __future__ import annotations
 
-import os
 from pathlib import Path
 from typing import Any
 
 import pandas as pd
 
+from src.security.validation import validate_path
+
 
 def load_dataset(path: str, allowed_dirs: list[str]) -> pd.DataFrame:
     """Load CSV; path must be under one of allowed_dirs."""
-    path = Path(path).resolve()
-    if not any(str(path).startswith(str(Path(d).resolve())) for d in allowed_dirs):
-        raise PermissionError(f"Path not allowed: {path}")
+    path = validate_path(str(path), allowed_dirs, must_exist=True)
     if not path.suffix.lower() == ".csv":
         raise ValueError("Only CSV files are allowed")
     return pd.read_csv(path)
@@ -49,9 +48,7 @@ def correlation_with_target(df: pd.DataFrame, target_col: str = "target") -> dic
 
 def save_eda_report(report: dict | str, output_path: str, allowed_dirs: list[str]) -> str:
     """Save EDA report (JSON or text) to an allowed directory."""
-    path = Path(output_path).resolve()
-    if not any(str(path).startswith(str(Path(d).resolve())) for d in allowed_dirs):
-        raise PermissionError(f"Path not allowed: {path}")
+    path = validate_path(str(output_path), allowed_dirs, must_exist=False)
     path.parent.mkdir(parents=True, exist_ok=True)
     if isinstance(report, dict):
         import json

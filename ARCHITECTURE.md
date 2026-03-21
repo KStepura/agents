@@ -22,7 +22,7 @@
 ┌─────────────────┐               ┌─────────────────┐               ┌─────────────────┐
 │    EXPLORER     │               │   ENGINEER      │               │    BUILDER      │
 │  (EDA, отчёты)  │──────────────▶│ (фичи, препроцесс)│──────────────▶│ (модель, MSE)   │
-│  + RAG (знания) │               │  + Tool Use      │               │  + Critic loop  │
+│  + RAG (знания) │               │  + Tool Use      │               │  + Critic / hparam │
 └─────────────────┘               └─────────────────┘               └─────────────────┘
          │                                    │                                    │
          └────────────────────────────────────┼────────────────────────────────────┘
@@ -63,7 +63,7 @@
 ### 3. Builder (Построитель модели)
 
 - **Роль**: выбор регрессора, кросс-валидация, минимизация MSE, формирование предсказаний и submission.
-- **Паттерн**: Planner–Executor–Critic (самокритика): план → выполнение → оценка MSE → при необходимости перепланирование.
+- **Паттерн**: Planner–Executor–Critic: план → выполнение (`train_regressor`, `make_submission`) → при невысоком MSE или по порогу — остановка; иначе повтор с подсказкой Critic (несколько раундов LLM, если задан `mse_threshold` или `critic_iterate_without_threshold`). Если в конфиге включён **`evaluation.hparam_search`** с **`use_best_only: true`**, финальное обучение и submission выполняются **детерминированно** по лучшей точке сетки (LLM Builder не вызывается).
 - **Инструменты**:
   - загрузка обработанных данных;
   - обучение регрессоров (например, Ridge, RandomForest, XGBoost/LightGBM, простые нейросети);
@@ -72,11 +72,11 @@
 - **Вход**: артефакты от Engineer.
 - **Выход**: путь к submission, метрики (MSE), краткое обоснование выбора модели.
 
-### 4. Coordinator (опционально, но рекомендуется)
+### 4. Coordinator
 
-- **Роль**: оркестрация шагов (сначала Explorer → затем Engineer → затем Builder), передача артефактов, решение о повторных запусках (например, если MSE выше порога).
-- **Паттерн**: Supervisor (управление workflow).
-- Реализация: один «над-агент» или скрипт оркестрации (LangGraph/AutoGen).
+- **Роль**: оркестрация шагов Explorer → Engineer → (опционально **перебор гиперпараметров**: сетка `grid` + `cartesian`, или **Optuna**, политика `selection_policy`) → Builder и передача артефактов.
+- **Паттерн**: Supervisor.
+- **Реализация в коде**: [`coordinator.py`](src/agents/coordinator.py) — без отдельного LLM; после Engineer вызывается [`run_hparam_grid`](src/evaluation/hparam_search.py), если в конфиге включён поиск; агрегирует **`agent_metrics`** (токены LLM по агентам) для записи в `experiments.jsonl`.
 
 ---
 
@@ -96,10 +96,10 @@
 - Все инструменты — **безопасные** Python-функции с чёткими входами/выходами.
 - **Input validation**: проверка путей к файлам (только разрешённые директории), типов и диапазонов параметров (например, `n_estimators`, `max_depth`).
 - **MCP (Model Context Protocol)**: при желании обернуть набор инструментов (EDA, feature selection, обучение) в MCP-сервер для единообразного доступа агентов.
-- Примеры инструментов:
-  - `load_dataset(path)`, `get_dtypes()`, `describe()`, `missing_report()`, `correlation_with_target()`
-  - `fit_preprocessor(config)`, `transform_train_test(...)`, `select_features(method, k)`
-  - `train_regressor(name, params)`, `evaluate_mse()`, `make_submission(predictions_path)`
+- Примеры инструментов (см. `src/agents/tools_for_llm.py`):
+  - Explorer: `load_and_summarize`, `get_missing_and_correlation`, `save_eda_report`
+  - Engineer: `fit_preprocessor`, `transform_train_test`
+  - Builder: `train_regressor` (MSE на валидации в ответе), `make_submission`
 
 ---
 
@@ -119,7 +119,8 @@
 - **Guardrails**: 
   - запрет выполнения произвольного кода от LLM (только вызов заранее объявленных инструментов);
   - при использовании `exec`/`eval` — только в sandbox или запрет.
-- **Мониторинг**: логирование вызовов инструментов, затраченного времени, метрик (MSE) по шагам; при необходимости — алерты при аномалиях (например, падение MSE на валидации).
+- **Мониторинг**: логирование вызовов инструментов (время), метрик MSE; в `run.py` — сводка **токенов и числа вызовов API** по агентам в `experiments.jsonl` (`agent_metrics`).
+- **Устойчивость выдачи** (минимальный уровень для отчёта): в [`model_tools.make_submission`](src/tools/model_tools.py) опционально **клип предсказаний** по квантилям `target` на train и опционально **ограничение числовых признаков теста** диапазоном train (см. `robustness` в `config/settings.yaml`).
 
 ---
 
@@ -129,15 +130,16 @@
 - **Встроенная оценка**:
   - автоматический расчёт MSE на валидационной выборке после обучения;
   - сохранение результатов в «память экспериментов» для сравнения архитектур/гиперпараметров.
-- **Benchmarking**: скрипт или агент, который запускает несколько конфигураций (например, разные наборы фичей или модели) и формирует сводную таблицу MSE.
+- **Benchmarking ML**: [`scripts/run_benchmark.py`](scripts/run_benchmark.py) — несколько моделей/гиперов на одном препроцессинге.
+- **Сравнение сценариев системы** (RAG / без RAG и т.д.): [`scripts/compare_architectures.py`](scripts/compare_architectures.py) — два конфига подряд, метки в `experiments.jsonl`, копии submission.
 
 ---
 
 ## Стек технологий
 
-- **LLM**: OpenRouter (доступ к разным моделям), при необходимости HuggingFace (Qwen и др.) для локального запуска.
-- **Фреймворк агентов**: AutoGen и/или LangGraph для мультиагентного взаимодействия и workflow.
-- **RAG**: ChromaDB или FAISS, embedding через API или sentence-transformers.
+- **LLM**: OpenRouter (OpenAI-совместимый клиент в [`src/llm/client.py`](src/llm/client.py)).
+- **Оркестрация агентов**: явный Supervisor в Python (Coordinator), без LangGraph/AutoGen в репозитории.
+- **RAG**: ChromaDB, эмбеддинги sentence-transformers (см. `src/rag/`).
 - **Данные и ML**: pandas, scikit-learn, при необходимости LightGBM/XGBoost.
 - **Конфиг**: YAML/ENV для API-ключей, путей к данным и к артефактам.
 
@@ -165,19 +167,21 @@ mws-ai-agents-2026/
 │   │   └── coordinator.py        # оркестратор
 │   ├── tools/
 │   │   ├── eda_tools.py           # инструменты EDA
-│   │   ├── feature_tools.py       # препроцессинг, feature selection
+│   │   ├── feature_tools.py       # препроцессинг
 │   │   └── model_tools.py         # обучение, MSE, submission
 │   ├── rag/
 │   │   ├── indexer.py             # индексация документов
-│   │   └── retriever.py           # поиск по RAG
+│   │   ├── retriever.py           # поиск по RAG
+│   │   └── bootstrap.py           # авто-сборка индекса при run.py
 │   ├── memory/
 │   │   └── experiments.py         # сохранение/загрузка экспериментов
 │   ├── security/
 │   │   ├── validation.py          # проверка входов
 │   │   └── guardrails.py         # ограничения на действия
 │   └── evaluation/
-│       ├── metrics.py             # MSE, расчёт на валидации
-│       └── benchmark.py           # сравнение конфигураций
+│       ├── benchmark.py           # бенчмарк ML-конфигов
+│       ├── hparam_search.py       # сетка гиперпараметров для Coordinator
+│       └── optuna_hparam.py       # Optuna (режим mode: optuna)
 ├── knowledge/                     # документы для RAG (опционально)
 │   └── ...
 ├── artifacts/                     # EDA-отчёты, датасеты, модели

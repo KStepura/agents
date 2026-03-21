@@ -18,6 +18,12 @@ paths:
   submissions_dir: "submissions"
   knowledge_dir: "knowledge"
 
+# Препроцессинг (используется run.py и агент Engineer через инструменты)
+pipeline:
+  encoding: te_freq          # te_freq | ohe — для сравнения с историческим OHE см. docs/RESULTS.md
+  # Категории с частотой < порога на train схлопываются в __OTHER__ (только te_freq)
+  rare_category_min_count: 3
+
 # LLM (OpenRouter)
 llm:
   provider: openrouter
@@ -27,10 +33,11 @@ llm:
   temperature: 0.2
   max_tokens: 4096
 
-# RAG
+# RAG (индекс при необходимости собирается в run.py из knowledge/)
 rag:
-  vector_store: chroma       # chroma | faiss
-  embedding_model: "sentence-transformers/all-MiniLM-L6-v2"  # или через API
+  enabled: true
+  persist_path: "artifacts/chroma_rag"   # каталог индекса Chroma
+  embedding_model: "sentence-transformers/all-MiniLM-L6-v2"
   top_k: 5
 
 # Агенты
@@ -42,9 +49,10 @@ agents:
   builder:
     system_prompt_file: "config/prompts/builder_system.txt"
     critic_max_iterations: 3
-    mse_threshold: null     # при желании: перезапуск, если MSE > порога
-  coordinator:
-    system_prompt_file: "config/prompts/coordinator_system.txt"
+    # Если val/cv MSE ≤ порога — ранний выход из цикла Critic (только LLM Builder)
+    mse_threshold: null
+    # true: всегда до critic_max_iterations раундов; false: при mse_threshold=null — один раунд LLM
+    critic_iterate_without_threshold: false
 
 # Безопасность
 security:
@@ -52,8 +60,45 @@ security:
   max_file_size_mb: 500
   forbid_exec: true
 
-# Оценка
+# Оценка и финальное обучение (run.py → Builder / train_regressor)
 evaluation:
   val_ratio: 0.2
-  cv_folds: 5
+  cv_folds: 5               # финальная модель: CV + fit_full_train (см. ниже)
+  fit_full_train: true
   random_state: 42
+  # mode: grid (сетка+cartesian) | optuna — нужен: pip install optuna
+  hparam_search:
+    mode: optuna
+    enabled: true
+    use_best_only: true     # финальное обучение + submission без LLM Builder по лучшей точке поиска
+    eval_cv_folds: 3        # CV на этапе поиска (Optuna / сетка)
+    optuna:
+      n_trials: 28
+      model: lightgbm
+      n_estimators_low: 150
+      n_estimators_high: 500
+      max_depth_low: 4
+      max_depth_high: 12
+      learning_rate_low: 0.02
+      learning_rate_high: 0.2
+      num_leaves_low: 16
+      num_leaves_high: 127
+      min_child_samples_low: 5
+      min_child_samples_high: 100
+      seed: 42
+    # Альтернатива: mode: grid + grid / cartesian / max_trials (см. docs/RESULTS.md)
+    selection_policy:
+      prefer_boosting: true
+      tie_relative_tolerance: 0.05
+
+  # Усреднение предсказаний на test по K моделям (K-fold blend; при enabled игнорируется одиночный fit_full_train для сабмита)
+  ensemble:
+    enabled: true
+    kfold_blend_test: true
+    n_folds: 5
+
+# Устойчивость: по умолчанию без клипа предсказаний (лучше для Kaggle LB); включите при выбросах
+robustness:
+  clip_predictions: false
+  clip_quantiles: [0.005, 0.995]
+  clip_features_to_train_range: false

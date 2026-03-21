@@ -1,30 +1,8 @@
-# Артефакты пайплайна (генерируются скриптом, не коммитить)
-artifacts/*.joblib
-artifacts/*.csv
-artifacts/*.pkl
-!artifacts/.gitkeep
-
-# Сабмиты (результаты запусков)
-submissions/*.csv
-!submissions/.gitkeep
-
-# Окружение и секреты
 .venv/
-venv/
-.env
-*.pyc
 __pycache__/
+*.py[cod]
 .pytest_cache/
-*.egg-info/
-
-# IDE
-.idea/
-.vscode/
-*.swp
-
-# Локальная инструкция (не коммитить)
-docs/GIT.md
-
-# Опционально: не коммитить сырые данные, если скачиваются с Kaggle
-# data/*.csv
-# !data/README.md
+.mypy_cache/
+.env
+artifacts/
+submissions/*.csv
