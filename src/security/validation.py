@@ -68,5 +68,14 @@ def validate_model_params(name: str, params: dict | None) -> dict:
         nl = params.get("num_leaves")
         if nl is not None:
             out["num_leaves"] = max(2, min(int(nl), 512))
+        for key, lo, hi in (
+            ("reg_alpha", 0.0, 100.0),
+            ("reg_lambda", 0.0, 100.0),
+            ("subsample", 0.05, 1.0),
+            ("colsample_bytree", 0.05, 1.0),
+        ):
+            v = params.get(key)
+            if v is not None:
+                out[key] = max(lo, min(float(v), hi))
 
     return out

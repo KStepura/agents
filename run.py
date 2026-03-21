@@ -10,6 +10,8 @@
 from __future__ import annotations
 
 import argparse
+import time
+from datetime import datetime, timezone
 from pathlib import Path
 
 
@@ -63,8 +65,11 @@ def main() -> None:
         pass
 
     from src.monitoring.logger import configure_logging
+    from src.monitoring.run_summary import write_run_summary
+    from src.security.guardrails import reset_tool_call_budget
 
     configure_logging()
+    reset_tool_call_budget()
 
     from src.rag.bootstrap import ensure_rag_index_if_needed
 
@@ -117,9 +122,20 @@ def main() -> None:
     )
     coordinator = CoordinatorAgent(explorer, engineer, builder, llm_config, config=config)
 
-    print("Running multi-agent pipeline: Explorer → Engineer → Builder")
-    print("Data dir:", data_dir)
+    monitoring_cfg = config.get("monitoring") or {}
+    t_mono0 = time.monotonic()
+    wall_start = datetime.now(timezone.utc).isoformat()
+
     hs = evaluation_cfg.get("hparam_search") or {}
+    pre = hs.get("preprocessing_search") or {}
+    if pre.get("enabled"):
+        print(
+            "Running pipeline: Explorer → nested preprocessing + Optuna → Builder "
+            "(LLM Engineer skipped; см. preprocessing_search)"
+        )
+    else:
+        print("Running pipeline: Explorer → Engineer → Builder")
+    print("Data dir:", data_dir)
     print(
         "  Preprocessing encoding:",
         pipeline_cfg.get("encoding", "te_freq"),
@@ -129,8 +145,28 @@ def main() -> None:
         evaluation_cfg.get("fit_full_train", False),
         "| hparam_search=",
         hs.get("enabled", False),
+        "| preprocessing_search=",
+        pre.get("enabled", False),
     )
     result = coordinator.run(data_dir)
+    duration_sec = time.monotonic() - t_mono0
+
+    run_summary_path: str | None = None
+    if monitoring_cfg.get("run_summary_json", True):
+        run_summary_path = write_run_summary(
+            artifacts_dir,
+            {
+                "ts_start": wall_start,
+                "duration_sec": round(duration_sec, 3),
+                "submission_path": result.get("submission_path"),
+                "val_mse": result.get("val_mse"),
+                "builder_mode": result.get("builder_mode"),
+                "agent_metrics": result.get("agent_metrics"),
+                "artifact_validation": result.get("artifact_validation"),
+                "hparam_mode": result.get("hparam_mode"),
+            },
+        )
+
     print("Done.")
     print("  Submission:", result.get("submission_path"))
     print("  Val MSE:", result.get("val_mse"))
@@ -148,26 +184,33 @@ def main() -> None:
 
     from src.memory.experiments import save_experiment
 
+    exp_payload = {
+        "entry": "run.py",
+        "config": str(args.config),
+        "experiment_label": args.experiment_label,
+        "pipeline": pipeline_cfg,
+        "evaluation": evaluation_cfg,
+        "monitoring": monitoring_cfg,
+        "agent_metrics": am,
+        "hparam_trials": result.get("hparam_trials"),
+        "hparam_best": result.get("hparam_best"),
+        "hparam_selection_note": result.get("hparam_selection_note"),
+        "hparam_mode": result.get("hparam_mode"),
+        "builder_mode": result.get("builder_mode"),
+        "artifact_validation": result.get("artifact_validation"),
+        "duration_sec": round(duration_sec, 3),
+        "run_summary_path": run_summary_path,
+    }
     log_path = save_experiment(
         None,
-        {
-            "entry": "run.py",
-            "config": str(args.config),
-            "experiment_label": args.experiment_label,
-            "pipeline": pipeline_cfg,
-            "evaluation": evaluation_cfg,
-            "agent_metrics": am,
-            "hparam_trials": result.get("hparam_trials"),
-            "hparam_best": result.get("hparam_best"),
-            "hparam_selection_note": result.get("hparam_selection_note"),
-            "hparam_mode": result.get("hparam_mode"),
-            "builder_mode": result.get("builder_mode"),
-        },
+        exp_payload,
         result.get("val_mse"),
         str(result.get("submission_path", "")),
         artifacts_dir,
     )
     print("  Experiment log:", log_path)
+    if run_summary_path:
+        print("  Run summary:", run_summary_path)
 
 
 if __name__ == "__main__":

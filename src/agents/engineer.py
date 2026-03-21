@@ -30,8 +30,11 @@ class EngineerAgent:
         self.data_dir = str(Path(data_dir).resolve())
         self.pipeline_config = pipeline_config or {}
 
-    def run(self, eda_artifact: dict) -> dict:
-        """Produce preprocessing and processed data paths. Returns train_path, test_path, pipeline_path."""
+    def run(self, eda_artifact: dict, feedback_message: str | None = None) -> dict:
+        """
+        Produce preprocessing and processed data paths. Returns train_path, test_path, pipeline_path.
+        feedback_message: если задан — предыдущая проверка артефактов не прошла; агент должен исправить пайплайн.
+        """
         enc = self.pipeline_config.get("encoding", "te_freq")
         tools_exec = _engineer_tools_executor(
             self.allowed_dirs,
@@ -49,6 +52,13 @@ class EngineerAgent:
             f"The project uses encoding '{enc}' by default in fit_preprocessor (you may omit encoding). "
             "Reply with the paths to train_processed.csv and test_processed.csv."
         )
+        if feedback_message:
+            user_msg = (
+                "[VALIDATION FAILED — your previous preprocessing did not pass automatic checks. "
+                "Fix the issue using ONLY the provided tools (fit_preprocessor, transform_train_test).]\n"
+                f"Problems reported:\n{feedback_message}\n\n"
+                + user_msg
+            )
         final_text, _, usage = run_chat_with_tools(
             client,
             model=self.llm_config.get("model", "qwen/qwen-2.5-72b-instruct"),

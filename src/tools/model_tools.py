@@ -59,6 +59,10 @@ def _get_model(name: str, params: dict[str, Any]):
                 kw["min_child_samples"] = int(params["min_child_samples"])
             if "num_leaves" in params:
                 kw["num_leaves"] = int(params["num_leaves"])
+            for k in ("reg_alpha", "reg_lambda", "subsample", "colsample_bytree"):
+                if k in params:
+                    kw[k] = float(params[k])
+            kw["verbosity"] = -1
             return lgb.LGBMRegressor(**kw)
         except ImportError:
             raise ImportError("lightgbm not installed")

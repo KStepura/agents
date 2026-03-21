@@ -46,6 +46,15 @@ agents:
     system_prompt_file: "config/prompts/explorer_system.txt"
   engineer:
     system_prompt_file: "config/prompts/engineer_system.txt"
+    # Feedback loop: проверка train_processed/test_processed → при сбое повтор Engineer с замечаниями
+    artifact_validation:
+      enabled: true
+      max_rounds: 3          # попыток (включая первый вызов)
+      strict: false           # true = RuntimeError если после всех раундов всё ещё ошибки
+      min_train_rows: 5
+      min_test_rows: 1
+      check_python_scripts: true      # py_compile для *.py в artifacts (если появятся)
+      check_preprocessor_joblib: true # загрузка preprocessor.joblib + sklearn Pipeline
   builder:
     system_prompt_file: "config/prompts/builder_system.txt"
     critic_max_iterations: 3
@@ -53,6 +62,10 @@ agents:
     mse_threshold: null
     # true: всегда до critic_max_iterations раундов; false: при mse_threshold=null — один раунд LLM
     critic_iterate_without_threshold: false
+
+# Мониторинг прогона (длительность, метрики — для отчёта и сравнения прогонов)
+monitoring:
+  run_summary_json: true   # artifacts/run_summary.json
 
 # Безопасность
 security:
@@ -71,10 +84,18 @@ evaluation:
     mode: optuna
     enabled: true
     use_best_only: true     # финальное обучение + submission без LLM Builder по лучшей точке поиска
-    eval_cv_folds: 3        # CV на этапе поиска (Optuna / сетка)
+    eval_cv_folds: 5        # CV на этапе поиска (стабильнее MSE; дороже по времени)
+    # Внешний цикл: несколько препроцессингов + Optuna на каждом (без LLM Engineer).
+    # Два варианта te_freq (ohe даёт огромную размерность и часто «зависает» на Optuna — не включаем в дефолт).
+    # Суммарный бюджет: len(variants) × n_trials (2×18=36).
+    preprocessing_search:
+      enabled: true
+      variants:
+        - { encoding: te_freq, rare_category_min_count: 3 }
+        - { encoding: te_freq, rare_category_min_count: 8 }
     optuna:
-      n_trials: 28
-      model: lightgbm
+      n_trials: 18
+      models: [lightgbm, catboost]
       n_estimators_low: 150
       n_estimators_high: 500
       max_depth_low: 4
@@ -85,11 +106,37 @@ evaluation:
       num_leaves_high: 127
       min_child_samples_low: 5
       min_child_samples_high: 100
+      lgbm_regularization: true   # subsample, colsample_bytree, reg_alpha, reg_lambda
       seed: 42
     # Альтернатива: mode: grid + grid / cartesian / max_trials (см. docs/RESULTS.md)
     selection_policy:
       prefer_boosting: true
       tie_relative_tolerance: 0.05
+
+  # OOF-стекинг: несколько базовых моделей + мета на out-of-fold (приоритет над blend и pseudo, если enabled)
+  stacking:
+    enabled: false
+    # null → evaluation.cv_folds (или 5)
+    cv_folds: null
+    meta:
+      model: ridge
+      alpha: 1.0
+    base_models: []
+    # Пример:
+    # base_models:
+    #   - model: lightgbm
+    #     n_estimators: 200
+    #     max_depth: 6
+    #     learning_rate: 0.05
+    #   - model: ridge
+    #     alpha: 10.0
+
+  # Псевдо-лейблы на test (после стекинга, до blend; модель/параметры — из hparam_best)
+  pseudo_labels:
+    enabled: false
+    rounds: 2
+    # null → evaluation.cv_folds; 0 или 1 — без диагностического CV на чистом train
+    cv_folds: null
 
   # Усреднение предсказаний на test по K моделям (K-fold blend; при enabled игнорируется одиночный fit_full_train для сабмита)
   ensemble:

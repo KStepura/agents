@@ -1,1 +1,1 @@
-# Evaluation: MSE computation and benchmarking of runs.
+# Evaluation: hparam search, Optuna, preprocessing_search, validation (см. пакет).

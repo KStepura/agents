@@ -34,6 +34,18 @@
 
 ---
 
+## Feedback loops (обратная связь в цепочке)
+
+Требование курса: в агентной архитектуре должен быть **цикл улучшения** по результату предыдущего шага. В проекте это не «исполнение произвольного кода», а **итерации с проверкой артефактов и метрик**:
+
+1. **Engineer → проверка артефактов** ([`src/evaluation/artifact_validation.py`](src/evaluation/artifact_validation.py), [`src/evaluation/code_validation.py`](src/evaluation/code_validation.py)): после вызова Engineer Coordinator проверяет CSV (файлы, `target`, согласованность колонок), при необходимости — **синтаксис `*.py`** в `artifacts/` и **корректность `preprocessor.joblib`** (объект `sklearn.pipeline.Pipeline` в сохранённом словаре). При ошибке Engineer вызывается **повторно** с явным текстом замечаний (`agents.engineer.artifact_validation`). Токены LLM по раундам **суммируются** в `llm_usage`.
+2. **Builder (LLM-режим)** ([`src/agents/builder.py`](src/agents/builder.py)): **Critic** — если MSE выше порога или задано несколько раундов, следующий user-message содержит подсказку сменить модель/гиперпараметры.
+3. **Подбор модели**: Optuna / сетка + политика `prefer_boosting` — обратная связь по **метрике CV**, а не по тексту.
+
+Подробная привязка к формулировкам задания и ограничения — в **[docs/COMPLIANCE.md](docs/COMPLIANCE.md)**.
+
+---
+
 ## Агенты (минимум 3, по требованиям курса)
 
 ### 1. Explorer (Исследователь данных)
@@ -63,7 +75,7 @@
 ### 3. Builder (Построитель модели)
 
 - **Роль**: выбор регрессора, кросс-валидация, минимизация MSE, формирование предсказаний и submission.
-- **Паттерн**: Planner–Executor–Critic: план → выполнение (`train_regressor`, `make_submission`) → при невысоком MSE или по порогу — остановка; иначе повтор с подсказкой Critic (несколько раундов LLM, если задан `mse_threshold` или `critic_iterate_without_threshold`). Если в конфиге включён **`evaluation.hparam_search`** с **`use_best_only: true`**, финальное обучение и submission выполняются **детерминированно** по лучшей точке сетки (LLM Builder не вызывается).
+- **Паттерн**: Planner–Executor–Critic: план → выполнение (`train_regressor`, `make_submission`) → при невысоком MSE или по порогу — остановка; иначе повтор с подсказкой Critic (несколько раундов LLM, если задан `mse_threshold` или `critic_iterate_without_threshold`). Если в конфиге включён **`evaluation.hparam_search`** с **`use_best_only: true`**, финальное обучение и submission выполняются **детерминированно** по лучшей точке сетки (LLM Builder не вызывается); при этом приоритет: **`evaluation.stacking`** (OOF + мета) → **`evaluation.pseudo_labels`** → **K-fold blend** (`evaluation.ensemble`) → одиночная модель — см. [`src/tools/advanced_ensemble.py`](src/tools/advanced_ensemble.py).
 - **Инструменты**:
   - загрузка обработанных данных;
   - обучение регрессоров (например, Ridge, RandomForest, XGBoost/LightGBM, простые нейросети);
@@ -74,9 +86,9 @@
 
 ### 4. Coordinator
 
-- **Роль**: оркестрация шагов Explorer → Engineer → (опционально **перебор гиперпараметров**: сетка `grid` + `cartesian`, или **Optuna**, политика `selection_policy`) → Builder и передача артефактов.
+- **Роль**: оркестрация шагов Explorer → Engineer → (опционально **перебор гиперпараметров**: сетка `grid` + `cartesian`, или **Optuna**, политика `selection_policy`) → Builder и передача артефактов. Опционально **`preprocessing_search`** ([`preprocessing_search.py`](src/evaluation/preprocessing_search.py)): вместо LLM Engineer — перебор вариантов препроцессинга с Optuna на каждом, затем Builder.
 - **Паттерн**: Supervisor.
-- **Реализация в коде**: [`coordinator.py`](src/agents/coordinator.py) — без отдельного LLM; после Engineer вызывается [`run_hparam_grid`](src/evaluation/hparam_search.py), если в конфиге включён поиск; агрегирует **`agent_metrics`** (токены LLM по агентам) для записи в `experiments.jsonl`.
+- **Реализация в коде**: [`coordinator.py`](src/agents/coordinator.py) — без отдельного LLM; после Engineer (или вложенного препроцессинга) — **валидация артефактов** и при необходимости повтор Engineer; затем [`run_hparam_grid`](src/evaluation/hparam_search.py) или **Optuna**, если включён поиск и не использован только что вложенный Optuna; агрегирует **`agent_metrics`** для `experiments.jsonl`.
 
 ---
 
@@ -119,7 +131,7 @@
 - **Guardrails**: 
   - запрет выполнения произвольного кода от LLM (только вызов заранее объявленных инструментов);
   - при использовании `exec`/`eval` — только в sandbox или запрет.
-- **Мониторинг**: логирование вызовов инструментов (время), метрик MSE; в `run.py` — сводка **токенов и числа вызовов API** по агентам в `experiments.jsonl` (`agent_metrics`).
+- **Мониторинг**: логирование вызовов инструментов (время), метрик MSE; в `run.py` — сводка **токенов и числа вызовов API** по агентам в `experiments.jsonl` (`agent_metrics`); опционально **`artifacts/run_summary.json`** (`monitoring.run_summary_json`) — длительность прогона и ключевые поля результата.
 - **Устойчивость выдачи** (минимальный уровень для отчёта): в [`model_tools.make_submission`](src/tools/model_tools.py) опционально **клип предсказаний** по квантилям `target` на train и опционально **ограничение числовых признаков теста** диапазоном train (см. `robustness` в `config/settings.yaml`).
 
 ---
@@ -150,56 +162,65 @@
 ```
 mws-ai-agents-2026/
 ├── README.md
-├── ARCHITECTURE.md                 # описание архитектуры
+├── ARCHITECTURE.md
 ├── requirements.txt
-├── .env.example                   # OPENROUTER_API_KEY, пути
+├── .env.example
 ├── config/
-│   └── settings.yaml              # параметры агентов, пути, лимиты
-├── data/                          # симлинки или копии train/test/sample_submission
-│   ├── train.csv
-│   ├── test.csv
-│   └── sample_submission.csv
+│   ├── settings.yaml              # основной конфиг (в т.ч. preprocessing_search, Optuna)
+│   └── settings.norag.yaml      # вариант без RAG (compare_architectures)
+├── data/
+├── scripts/                       # вспомогательные сценарии (не вызываются из run.py)
+│   ├── build_rag_index.py
+│   ├── compare_architectures.py
+│   ├── run_benchmark.py           # несколько моделей подряд (функция run_benchmark внутри)
+│   └── run_pipeline_manual.py
 ├── src/
 │   ├── agents/
-│   │   ├── explorer.py            # агент EDA + RAG
-│   │   ├── engineer.py            # агент фичей
-│   │   ├── builder.py             # агент модели + critic
-│   │   └── coordinator.py        # оркестратор
+│   │   ├── explorer.py
+│   │   ├── engineer.py
+│   │   ├── builder.py
+│   │   ├── coordinator.py
+│   │   └── tools_for_llm.py
 │   ├── tools/
-│   │   ├── eda_tools.py           # инструменты EDA
-│   │   ├── feature_tools.py       # препроцессинг
-│   │   └── model_tools.py         # обучение, MSE, submission
+│   │   ├── eda_tools.py
+│   │   ├── feature_tools.py
+│   │   ├── model_tools.py
+│   │   └── advanced_ensemble.py # стекинг / псевдо-лейблы (по конфигу evaluation)
 │   ├── rag/
-│   │   ├── indexer.py             # индексация документов
-│   │   ├── retriever.py           # поиск по RAG
-│   │   └── bootstrap.py           # авто-сборка индекса при run.py
 │   ├── memory/
-│   │   └── experiments.py         # сохранение/загрузка экспериментов
+│   │   └── experiments.py
+│   ├── monitoring/
+│   │   ├── logger.py
+│   │   └── run_summary.py
 │   ├── security/
-│   │   ├── validation.py          # проверка входов
-│   │   └── guardrails.py         # ограничения на действия
+│   │   ├── validation.py
+│   │   ├── sanitize.py
+│   │   └── guardrails.py
 │   └── evaluation/
-│       ├── benchmark.py           # бенчмарк ML-конфигов
-│       ├── hparam_search.py       # сетка гиперпараметров для Coordinator
-│       └── optuna_hparam.py       # Optuna (режим mode: optuna)
-├── knowledge/                     # документы для RAG (опционально)
-│   └── ...
-├── artifacts/                     # EDA-отчёты, датасеты, модели
-├── submissions/                   # сгенерированные submission.csv
-└── run.py                         # точка входа: запуск pipeline
+│       ├── hparam_search.py
+│       ├── optuna_hparam.py
+│       ├── preprocessing_search.py
+│       ├── artifact_validation.py
+│       └── code_validation.py
+├── knowledge/
+├── artifacts/
+├── submissions/
+└── run.py                         # единственная точка входа автоматического пайплайна
 ```
 
 ---
 
 ## Критерии курса — соответствие
 
-| Критерий | Реализация |
-|----------|------------|
-| **Архитектура (20%)** | 3+ агента (Explorer, Engineer, Builder), Coordinator; паттерны ReAct, CoT, Planner–Executor–Critic; RAG; протокол обмена артефактами. |
-| **Автоматизация и безопасность (20%)** | Полный цикл без ручных шагов; input validation, guardrails, логирование/мониторинг. |
-| **Документация (20%)** | README, ARCHITECTURE.md, docstrings, воспроизводимость через config и requirements. |
-| **Качество модели (20%)** | Регрессия под MSE, валидация, обоснование выбора модели и фичей в отчёте/логах. |
-| **Benchmarking (20%)** | Встроенный расчёт MSE, сохранение экспериментов, возможность сравнения конфигураций. |
+Сводная таблица с **обоснованием решений**, ограничениями и ссылками на код — в **[docs/COMPLIANCE.md](docs/COMPLIANCE.md)**.
+
+| Критерий | Реализация (кратко) |
+|----------|---------------------|
+| **Архитектура (20%)** | 3+ агента, Coordinator, RAG, паттерны; **feedback** по артефактам Engineer и по MSE/CV у Builder. |
+| **Автоматизация и безопасность (20%)** | `run.py`, validation, guardrails, мониторинг токенов/инструментов. |
+| **Документация (20%)** | README, ARCHITECTURE, RESULTS, COMPLIANCE, конфиг, `experiments.jsonl`. |
+| **Качество модели (20%)** | MSE, CV, Optuna/сетка, ensemble, robustness (клип и др.). |
+| **Benchmarking (20%)** | Бенчмарк ML, сравнение сценариев (RAG и др.), журнал экспериментов. |
 
 ---
 

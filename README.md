@@ -6,13 +6,15 @@
 - **Метрика:** MSE (Mean Squared Error)
 - **Baseline с лидерборда:** 10986.9346
 - **Лучший результат:** Val MSE 10578.78 (LightGBM, `n_estimators=300`, `max_depth=8`)
+- **По умолчанию** (`config/settings.yaml`): два варианта **te_freq** (разный `rare_category_min_count`) + Optuna с **LightGBM и CatBoost**; режим **ohe** в список вариантов не входит (слишком широкая матрица, прогон может «зависнуть»). LLM Engineer не вызывается — см. `preprocessing_search`. Для цепочки с Engineer выключите `evaluation.hparam_search.preprocessing_search.enabled`.
 - **Данные:** табличный датасет (train.csv, test.csv), целевая переменная `target`
 
 ---
 
 ## Документация
 
-- **[ARCHITECTURE.md](ARCHITECTURE.md)** — архитектура агентов, RAG, инструменты, безопасность, оценка
+- **[ARCHITECTURE.md](ARCHITECTURE.md)** — архитектура агентов, RAG, инструменты, безопасность, **feedback loops**, оценка
+- **[docs/COMPLIANCE.md](docs/COMPLIANCE.md)** — **соответствие требованиям курса**, обоснование решений, ограничения (для отчёта и проверки)
 - **[docs/RESULTS.md](docs/RESULTS.md)** — таблица экспериментов (модель, параметры, Val MSE, команды)
 - **[docs/NEXT.md](docs/NEXT.md)** — дальнейшие шаги по улучшению и развитию системы
 
@@ -24,7 +26,8 @@
 - `src/agents/` — Explorer, Engineer, Builder, Coordinator
 - `src/tools/` — инструменты EDA, препроцессинга, обучения (Tool Use)
 - `src/rag/` — индексация и поиск по базе знаний (Chroma + sentence-transformers)
-- `src/memory/` — журнал экспериментов (`artifacts/experiments.jsonl`, в т.ч. токены LLM и метки прогонов)
+- `src/memory/` — журнал экспериментов (`artifacts/experiments.jsonl`, в т.ч. токены LLM, `artifact_validation`, метки прогонов)
+- `src/evaluation/` — бенчмарк, Optuna/сетка гиперпараметров, **вложенный поиск по препроцессингу** (`preprocessing_search`), **проверка артефактов Engineer**
 - `src/security/` — проверка путей, whitelist инструментов, границы гиперпараметров
 - `src/monitoring/` — логирование вызовов инструментов (stderr)
 - `knowledge/` — тексты для RAG (Markdown / `.txt`)
@@ -45,7 +48,7 @@ cd /path/to/agents
 python3 -m venv .venv
 source .venv/bin/activate   # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
-pip install xgboost lightgbm   # опционально, для бустинга
+# lightgbm и catboost указаны в requirements.txt; xgboost — опционально (pip install xgboost)
 ```
 
 Скопируйте `.env.example` в `.env` и задайте `OPENROUTER_API_KEY` для запуска с LLM.
@@ -74,14 +77,15 @@ python run.py
 # или: python run.py --data-dir data --config config/settings.yaml
 ```
 
-Цепочка: **Explorer → Engineer → Builder**. В stderr пишутся логи вызовов инструментов. После успешного прогона в `artifacts/experiments.jsonl` добавляется строка с `val_mse` и путём к submission.
+**Что делает `run.py` (автоматический прогон):** Coordinator вызывает Explorer (EDA + опционально RAG), затем либо **вложенный препроцессинг + Optuna** (`evaluation.hparam_search.preprocessing_search.enabled: true` — детерминированные фичи, **без LLM Engineer**), либо **Engineer** (LLM + инструменты `fit_preprocessor` / `transform`), затем **подбор гиперпараметров** (Optuna или сетка, если включено), затем **Builder** (при `use_best_only: true` — детерминированное обучение и `submission.csv` без LLM). В stderr — логи вызовов инструментов; в `artifacts/experiments.jsonl` и при `monitoring.run_summary_json` — в `artifacts/run_summary.json` — метрики и длительность.
 
-Параметры автоматического прогона — в [config/settings.yaml](config/settings.yaml):
+Параметры — в [config/settings.yaml](config/settings.yaml):
 
-- **`pipeline`**: `encoding` (`te_freq` или `ohe`), опционально **`rare_category_min_count`** (редкие категории → `__OTHER__` при `te_freq`).
-- **`evaluation`**: `val_ratio`, `cv_folds`, `fit_full_train`, **`hparam_search`** (`mode: grid` или **`optuna`**), **`ensemble`** (K-fold blend предсказаний на test); при **`use_best_only: true`** финальный шаг **без LLM** Builder.
-- **`robustness`**: по умолчанию клип предсказаний **выключен** (`clip_predictions: false`); при необходимости включите для борьбы с выбросами.
-- **`agents.builder`**: `critic_max_iterations`, **`mse_threshold`** (ранний выход из цикла Critic при LLM Builder), **`critic_iterate_without_threshold`** (несколько раундов LLM даже без порога).
+- **`pipeline`**: базовые значения для Engineer; при `preprocessing_search` перебираются варианты из `variants`.
+- **`evaluation`**: `val_ratio`, `cv_folds`, `fit_full_train`, **`hparam_search`** (Optuna / сетка, **`preprocessing_search`**, **`ensemble`**, опционально **`stacking`** / **`pseudo_labels`** — код в `src/tools/advanced_ensemble.py`, подгружается только если включено); при **`use_best_only: true`** финальный Builder **без LLM**.
+- **`monitoring`**: `run_summary_json` — сводка прогона в `artifacts/run_summary.json`.
+- **`robustness`**: клип предсказаний по умолчанию выключен (`clip_predictions: false`).
+- **`agents.builder`**: настройки Critic, если LLM Builder используется (`use_best_only: false`).
 
 Флаг **`python run.py --experiment-label NAME`** добавляет метку в строку `experiments.jsonl` (удобно для [scripts/compare_architectures.py](scripts/compare_architectures.py)).
 
@@ -99,15 +103,13 @@ K-fold оценка и обучение на **всём** train для сабм�
 python scripts/run_pipeline_manual.py --data-dir data --model lightgbm --cv-folds 5 --full-train --n-estimators 300 --max-depth 8
 ```
 
-### 6. Сравнение нескольких конфигураций (бенчмарк без LLM)
+### 6. Сравнение нескольких конфигураций (вспомогательный скрипт, не `run.py`)
 
-Скрипт гоняет несколько моделей подряд, складывает submission в `submissions/submission_benchmark_0.csv`, …
+`scripts/run_benchmark.py` гоняет несколько моделей подряд на одном препроцессинге, складывает submission в `submissions/submission_benchmark_0.csv`, … Редактируйте список `configs` внутри скрипта.
 
 ```bash
 python scripts/run_benchmark.py
 ```
-
-Набор конфигураций редактируется в [scripts/run_benchmark.py](scripts/run_benchmark.py) (список `configs`).
 
 ### 7. Сравнение сценариев (RAG / без RAG и др.)
 
@@ -121,12 +123,13 @@ python scripts/compare_architectures.py
 
 ---
 
-## Программный API
+## Программный API (для расширений и тестов)
 
-- Журнал экспериментов: `src.memory.experiments.save_experiment`, `list_experiments` (поля `agent_metrics`, `hparam_*`, `experiment_label` при наличии)
-- Перебор гиперпараметров: `src.evaluation.hparam_search` (`build_search_grid`, `run_hparam_grid`, `select_best_with_policy`)
-- Бенчмарк ML: `src.evaluation.benchmark.run_benchmark(configs, data_dir, artifacts_dir, submissions_dir)`
+- Журнал экспериментов: `src.memory.experiments.save_experiment`, `list_experiments`
+- Перебор гиперпараметров: `src.evaluation.hparam_search`, `src.evaluation.optuna_hparam`, `src.evaluation.preprocessing_search`
+- Опциональные режимы Builder: `src.tools.advanced_ensemble` (стекинг / псевдо-лейблы), только если включено в `evaluation`
 - RAG: `src.rag.indexer.build_index`, `src.rag.retriever.retrieve`
+- Вспомогательный бенчмарк нескольких моделей: функция `run_benchmark` в [scripts/run_benchmark.py](scripts/run_benchmark.py)
 
 ---
 

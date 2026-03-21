@@ -51,6 +51,9 @@ security:
   max_file_size_mb: 500
   forbid_exec: true
 
+monitoring:
+  run_summary_json: true
+
 evaluation:
   val_ratio: 0.2
   cv_folds: 5

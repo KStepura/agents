@@ -62,24 +62,35 @@ python scripts/run_pipeline_manual.py --model catboost --n-estimators 500 --max-
 
 ## Автоматический прогон (`python run.py`)
 
+Единственная точка входа полного цикла (Explorer → фичи → Optuna/сетка при необходимости → Builder). Скрипты в `scripts/` (`run_benchmark.py`, `run_pipeline_manual.py`, `compare_architectures.py`) запускаются **отдельно** и не подключаются к `run.py`.
+
 | Опция в `config/settings.yaml` | Описание |
 |--------------------------------|----------|
-| `evaluation.hparam_search` | После Engineer: перебор конфигураций, выбор лучшего по Val/CV MSE → Builder. |
+| `evaluation.hparam_search` | Перебор конфигураций после подготовки данных (LLM Engineer или `preprocessing_search`), выбор лучшего по Val/CV MSE → Builder. |
 | `hparam_search.mode` | `grid` (сетка + cartesian) или `optuna` (Bayesian optimization; `pip install optuna`, см. `optuna:` в конфиге). |
 | `hparam_search.grid` | Явный список словарей `{ model, n_estimators, max_depth, learning_rate, … }`. |
 | `hparam_search.cartesian` | Одна `model` + оси-списки; декартово произведение **дополняет** `grid` (сначала строки `grid`, затем развёртка). |
-| `hparam_search.eval_cv_folds` | Число фолдов **только для поиска** (часто 3 для скорости); финальная модель использует `evaluation.cv_folds`. |
+| `hparam_search.eval_cv_folds` | Число фолдов **только для поиска** (3 — быстрее, 5 — стабильнее оценка MSE); финальная модель использует `evaluation.cv_folds`. |
+| `hparam_search.preprocessing_search` | `enabled: true`: без LLM Engineer — перебор `variants` (encoding, `rare_category_min_count`), на каждом **Optuna**; лучший вариант копируется в `train_processed.csv`. Требует `mode: optuna`. |
+| `hparam_search.optuna.models` | Список из 2+ моделей (например `[lightgbm, catboost]`): каждый trial выбирает семейство + гиперпараметры. |
+| `hparam_search.optuna.lgbm_regularization` | `true`: в поиске LightGBM дополнительно `reg_alpha`, `reg_lambda`, `subsample`, `colsample_bytree`. |
 | `hparam_search.max_trials` | Максимум комбинаций после объединения `grid` + `cartesian` (обрезка с начала списка). |
 | `hparam_search.selection_policy` | `prefer_boosting: true` — если по CV выиграл Ridge, но есть LightGBM/RF/XGB/CatBoost с MSE не хуже чем (1 + `tie_relative_tolerance`) × лучший MSE, выбирается бустинг. |
 | `hparam_search.use_best_only: true` | Финальное обучение и `submission.csv` **без LLM** Builder. `false` — LLM Builder + подсказка + Critic. |
 | `agents.builder.mse_threshold` | Порог для раннего выхода из Critic (только LLM Builder). |
 | `robustness.*` | Клип предсказаний / фич; по умолчанию `clip_predictions: false` (часто лучше для LB). |
+| `evaluation.stacking` | `enabled` + непустой `base_models`: OOF-предсказания баз + мета-модель (`meta`) на OOF; при `use_best_only` приоритет над blend и pseudo. См. `src/tools/advanced_ensemble.py`. |
+| `evaluation.pseudo_labels` | `enabled`: итерации дообучения с добавлением test с предсказанным target; финальный сабмит — модель после последнего раунда. Модель/параметры из `hparam_best`. |
 | `evaluation.ensemble` | `enabled` + `kfold_blend_test`: K моделей на train (каждая на K−1 фолде), **среднее предсказаний на test** (вместо одной модели на 100% train). |
+| `agents.engineer.artifact_validation` | **Feedback loop:** CSV (`artifact_validation.py`); опционально `check_python_scripts`, `check_preprocessor_joblib` (`code_validation.py`); при ошибке — повтор Engineer (`max_rounds`, `strict`). |
+| `monitoring.run_summary_json` | `true` → **`artifacts/run_summary.json`**: длительность прогона, val_mse, `agent_metrics`, `artifact_validation`. |
 | `pipeline.rare_category_min_count` | Для `te_freq`: значения категории с частотой &lt; порога на train заменяются на **`__OTHER__`**; на test редкие/новые уровни тоже → `__OTHER__`. |
 
 LightGBM в сетке поддерживает **`num_leaves`**, **`min_child_samples`** (см. `src/security/validation.py`).
 
-В `experiments.jsonl` для `run.py` дополнительно: `agent_metrics`, `hparam_trials`, `hparam_best`, `hparam_selection_note`, `hparam_mode`, `builder_mode`, опционально `experiment_label`.
+Соответствие требованиям курса и обоснование решений — **[docs/COMPLIANCE.md](COMPLIANCE.md)**.
+
+В `experiments.jsonl` для `run.py` дополнительно: `agent_metrics`, `artifact_validation`, `hparam_*`, `hparam_mode`, `builder_mode`, опционально `experiment_label`.
 
 ---
 

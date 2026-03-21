@@ -78,7 +78,59 @@ class BuilderAgent:
         blend = bool(ens.get("enabled")) and bool(ens.get("kfold_blend_test"))
         n_blend = max(2, int(ens.get("n_folds") or cv_folds or 5))
 
-        if blend:
+        stack_ev = ev.get("stacking") or {}
+        if bool(stack_ev.get("enabled")):
+            from src.tools import advanced_ensemble
+
+            base_models = stack_ev.get("base_models") or []
+            if not base_models:
+                raise ValueError(
+                    "evaluation.stacking.enabled requires non-empty evaluation.stacking.base_models"
+                )
+            meta_cfg = stack_ev.get("meta") or {"model": "ridge"}
+            stack_cv = stack_ev.get("cv_folds")
+            if stack_cv is None:
+                stack_cv = cv_folds if cv_folds is not None else 5
+            else:
+                stack_cv = int(stack_cv)
+            res = advanced_ensemble.train_oof_stacking(
+                train_path=train_path,
+                test_path=test_path,
+                base_models=list(base_models),
+                meta_config=dict(meta_cfg),
+                submission_path=f"{self.submissions_dir}/submission.csv",
+                bundle_path=f"{self.artifacts_dir}/stacking_bundle.joblib",
+                allowed_dirs=self.allowed_dirs,
+                cv_folds=max(2, stack_cv),
+                random_state=rs,
+                robustness=rk or None,
+            )
+        elif bool((ev.get("pseudo_labels") or {}).get("enabled")):
+            from src.tools import advanced_ensemble
+
+            pseudo_ev = ev.get("pseudo_labels") or {}
+            rounds = max(1, int(pseudo_ev.get("rounds", 2)))
+            p_cv = pseudo_ev.get("cv_folds")
+            if p_cv is None:
+                p_cv = cv_folds
+            elif int(p_cv) < 2:
+                p_cv = None
+            else:
+                p_cv = int(p_cv)
+            res = advanced_ensemble.train_with_pseudo_labels(
+                name=model_name,
+                params=params,
+                train_path=train_path,
+                test_path=test_path,
+                model_save_path=f"{self.artifacts_dir}/model.joblib",
+                submission_path=f"{self.submissions_dir}/submission.csv",
+                allowed_dirs=self.allowed_dirs,
+                rounds=rounds,
+                random_state=rs,
+                cv_folds=p_cv,
+                robustness=rk or None,
+            )
+        elif blend:
             res = model_tools.train_regressor_kfold_blend(
                 name=model_name,
                 params=params,
@@ -116,11 +168,30 @@ class BuilderAgent:
         val_mse = res.get("val_mse")
         if val_mse is None:
             val_mse = res.get("cv_mse_mean")
-        mode_tag = "kfold_blend" if res.get("oof_kfold_blend") else "single_model"
-        summary = (
-            f"Deterministic Builder ({mode_tag}): model={model_name}, params={params}, "
-            f"val_mse/cv={val_mse}"
-        )
+        if res.get("stacking_oof"):
+            mode_tag = "oof_stacking"
+            summary = (
+                f"Deterministic Builder ({mode_tag}): n_base={res.get('n_base_models')}, "
+                f"meta={res.get('meta_model')}, val_mse/cv={val_mse}"
+            )
+        elif res.get("pseudo_labels"):
+            mode_tag = "pseudo_labels"
+            summary = (
+                f"Deterministic Builder ({mode_tag}): model={model_name}, params={params}, "
+                f"rounds={res.get('pseudo_labels_rounds')}, val_mse/cv={val_mse}"
+            )
+        elif res.get("oof_kfold_blend"):
+            mode_tag = "kfold_blend"
+            summary = (
+                f"Deterministic Builder ({mode_tag}): model={model_name}, params={params}, "
+                f"val_mse/cv={val_mse}"
+            )
+        else:
+            mode_tag = "single_model"
+            summary = (
+                f"Deterministic Builder ({mode_tag}): model={model_name}, params={params}, "
+                f"val_mse/cv={val_mse}"
+            )
         return {
             "submission_path": f"{self.submissions_dir}/submission.csv",
             "val_mse": float(val_mse) if val_mse is not None else None,

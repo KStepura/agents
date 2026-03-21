@@ -19,6 +19,10 @@ PARAM_KEYS = (
     "alpha",
     "min_child_samples",
     "num_leaves",
+    "reg_alpha",
+    "reg_lambda",
+    "subsample",
+    "colsample_bytree",
 )
 
 BOOSTING_MODELS = frozenset({"lightgbm", "xgboost", "catboost", "random_forest"})
