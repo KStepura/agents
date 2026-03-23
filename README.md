@@ -4,7 +4,6 @@
 
 - **Соревнование:** [пригласительная ссылка](https://www.kaggle.com/t/88dbc788cead475494fc76413a69f7ee)
 - **Метрика:** MSE (Mean Squared Error)
-- **Baseline с лидерборда:** 10986.9346
 - **Лучший результат:** Val MSE 10578.78 (LightGBM, `n_estimators=300`, `max_depth=8`)
 - **По умолчанию** (`config/settings.yaml`): два варианта **te_freq** (разный `rare_category_min_count`) + Optuna с **LightGBM и CatBoost**; режим **ohe** в список вариантов не входит (слишком широкая матрица, прогон может «зависнуть»). LLM Engineer не вызывается — см. `preprocessing_search`. Для цепочки с Engineer выключите `evaluation.hparam_search.preprocessing_search.enabled`.
 - **Данные:** табличный датасет (train.csv, test.csv), целевая переменная `target`
@@ -16,7 +15,6 @@
 - **[ARCHITECTURE.md](ARCHITECTURE.md)** — архитектура агентов, RAG, инструменты, безопасность, **feedback loops**, оценка
 - **[docs/COMPLIANCE.md](docs/COMPLIANCE.md)** — **соответствие требованиям курса**, обоснование решений, ограничения (для отчёта и проверки)
 - **[docs/RESULTS.md](docs/RESULTS.md)** — таблица экспериментов (модель, параметры, Val MSE, команды)
-- **[docs/NEXT.md](docs/NEXT.md)** — дальнейшие шаги по улучшению и развитию системы
 
 ---
 
@@ -67,7 +65,7 @@ pip install -r requirements.txt
 python scripts/build_rag_index.py
 ```
 
-Если документов в `knowledge/` нет или RAG выключен (`rag.enabled: false`), пайплайн идёт без RAG-контекста.
+По умолчанию в основном автопрогоне RAG включен (`config/settings.yaml`), и Explorer получает контекст из `knowledge/`, если индекс доступен.
 
 ### 4. Мультиагентный пайплайн (нужен API-ключ)
 
@@ -77,7 +75,7 @@ python run.py
 # или: python run.py --data-dir data --config config/settings.yaml
 ```
 
-**Что делает `run.py` (автоматический прогон):** Coordinator вызывает Explorer (EDA + опционально RAG), затем либо **вложенный препроцессинг + Optuna** (`evaluation.hparam_search.preprocessing_search.enabled: true` — детерминированные фичи, **без LLM Engineer**), либо **Engineer** (LLM + инструменты `fit_preprocessor` / `transform`), затем **подбор гиперпараметров** (Optuna или сетка, если включено), затем **Builder** (при `use_best_only: true` — детерминированное обучение и `submission.csv` без LLM). В stderr — логи вызовов инструментов; в `artifacts/experiments.jsonl` и при `monitoring.run_summary_json` — в `artifacts/run_summary.json` — метрики и длительность.
+**Что делает `run.py` (автоматический прогон):** Coordinator вызывает Explorer (EDA + RAG по основному конфигу), затем либо **вложенный препроцессинг + Optuna** (`evaluation.hparam_search.preprocessing_search.enabled: true` — детерминированные фичи, **без LLM Engineer**), либо **Engineer** (LLM + инструменты `fit_preprocessor` / `transform`), затем **подбор гиперпараметров** (Optuna или сетка, если включено), затем **Builder** (при `use_best_only: true` — детерминированное обучение и `submission.csv` без LLM). В stderr — логи вызовов инструментов; в `artifacts/experiments.jsonl` и при `monitoring.run_summary_json` — в `artifacts/run_summary.json` — метрики и длительность.
 
 Параметры — в [config/settings.yaml](config/settings.yaml):
 
