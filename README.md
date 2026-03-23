@@ -4,7 +4,6 @@
 
 - **Соревнование:** [пригласительная ссылка](https://www.kaggle.com/t/88dbc788cead475494fc76413a69f7ee)
 - **Метрика:** MSE (Mean Squared Error)
-- **Лучший результат:** Val MSE 10578.78 (LightGBM, `n_estimators=300`, `max_depth=8`)
 - **По умолчанию** (`config/settings.yaml`): два варианта **te_freq** (разный `rare_category_min_count`) + Optuna с **LightGBM и CatBoost**; режим **ohe** в список вариантов не входит (слишком широкая матрица, прогон может «зависнуть»). LLM Engineer не вызывается — см. `preprocessing_search`. Для цепочки с Engineer выключите `evaluation.hparam_search.preprocessing_search.enabled`.
 - **Данные:** табличный датасет (train.csv, test.csv), целевая переменная `target`
 
