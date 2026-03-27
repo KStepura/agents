@@ -1,6 +1,6 @@
 """
-EDA tools for Explorer agent.
-All inputs must be validated (paths under allowed dirs, no path traversal).
+Инструменты EDA для агента Explorer.
+Все входные данные должны проходить валидацию (пути только в разрешённых директориях, без path traversal).
 """
 
 from __future__ import annotations
@@ -14,7 +14,7 @@ from src.security.validation import validate_path
 
 
 def load_dataset(path: str, allowed_dirs: list[str]) -> pd.DataFrame:
-    """Load CSV; path must be under one of allowed_dirs."""
+    """Загружает CSV; путь должен находиться в одной из allowed_dirs."""
     path = validate_path(str(path), allowed_dirs, must_exist=True)
     if not path.suffix.lower() == ".csv":
         raise ValueError("Only CSV files are allowed")
@@ -22,22 +22,22 @@ def load_dataset(path: str, allowed_dirs: list[str]) -> pd.DataFrame:
 
 
 def get_dtypes(df: pd.DataFrame) -> dict[str, str]:
-    """Return column dtypes as string mapping."""
+    """Возвращает типы данных столбцов в виде отображения строк."""
     return df.dtypes.astype(str).to_dict()
 
 
 def describe(df: pd.DataFrame) -> dict[str, Any]:
-    """Descriptive statistics (numeric)."""
+    """Описательная статистика (для числовых признаков)."""
     return df.describe().to_dict() if len(df) else {}
 
 
 def missing_report(df: pd.DataFrame) -> dict[str, int]:
-    """Missing value counts per column."""
+    """Количество пропущенных значений по каждому столбцу."""
     return df.isnull().sum().to_dict()
 
 
 def correlation_with_target(df: pd.DataFrame, target_col: str = "target") -> dict[str, float]:
-    """Correlation of numeric columns with target."""
+    """Корреляция числовых признаков с целевой переменной."""
     if target_col not in df.columns:
         return {}
     numeric = df.select_dtypes(include=["number"])
@@ -47,7 +47,7 @@ def correlation_with_target(df: pd.DataFrame, target_col: str = "target") -> dic
 
 
 def save_eda_report(report: dict | str, output_path: str, allowed_dirs: list[str]) -> str:
-    """Save EDA report (JSON or text) to an allowed directory."""
+    """Сохраняет отчёт EDA (JSON или текст) в разрешённую директорию."""
     path = validate_path(str(output_path), allowed_dirs, must_exist=False)
     path.parent.mkdir(parents=True, exist_ok=True)
     if isinstance(report, dict):

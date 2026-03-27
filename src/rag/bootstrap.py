@@ -1,5 +1,5 @@
 """
-Ensure Chroma RAG index exists when the multi-agent pipeline runs (fully automated path).
+Гарантирует наличие индекса Chroma для RAG при запуске мультиагентного пайплайна (полностью автоматический режим).
 """
 
 from __future__ import annotations
@@ -16,9 +16,9 @@ def ensure_rag_index_if_needed(
     paths: dict,
     project_root: Path,
 ) -> None:
-    """
-    If RAG is enabled and persist dir is missing or empty, build index from knowledge_dir.
-    No-op if index already present, RAG disabled, or no documents to index.
+    """"
+    Если RAG включён и директория индекса отсутствует или пуста, создаёт индекс из knowledge_dir.
+    Ничего не делает, если индекс уже существует, RAG отключён или нет документов для индексации.
     """
     if not rag_config.get("enabled", True):
         return

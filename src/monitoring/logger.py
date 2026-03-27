@@ -8,7 +8,7 @@ _LOGGER = logging.getLogger("mws_agents.tools")
 
 
 def configure_logging(level: int = logging.INFO) -> None:
-    """Idempotent basic config for the agents package."""
+    """Идемпотентная базовая конфигурация логирования для пакета агентов."""
     root = logging.getLogger("mws_agents")
     if root.handlers:
         return

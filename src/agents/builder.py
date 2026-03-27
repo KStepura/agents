@@ -1,6 +1,6 @@
 """
-Builder agent: train regressors, evaluate MSE, produce submission.
-Pattern: Planner–Executor–Critic (retry when MSE above threshold or for another attempt).
+Агент Builder: обучает модели регрессии, оценивает MSE и формирует submission.
+Паттерн: Planner–Executor–Critic (повторяет попытку, если MSE выше порога или требуется ещё одна итерация).
 """
 
 from __future__ import annotations
@@ -16,8 +16,7 @@ from src.tools import model_tools
 
 
 class BuilderAgent:
-    """Agent that trains models, evaluates MSE, and generates submission.csv."""
-
+    """Агент, который обучает модели, оценивает MSE и генерирует файл submission.csv."""
     def __init__(
         self,
         llm_config: dict,
@@ -41,7 +40,7 @@ class BuilderAgent:
         self.robustness_config = robustness_config or {}
 
     def run(self, engineer_artifact: dict) -> dict:
-        """Train model, produce submission. Returns submission_path, val_mse, model_summary, llm_usage."""
+        """Обучает модель и формирует submission. Возвращает: submission_path, val_mse, model_summary, llm_usage."""
         train_path = engineer_artifact.get("train_path", f"{self.artifacts_dir}/train_processed.csv")
         test_path = engineer_artifact.get("test_path", f"{self.artifacts_dir}/test_processed.csv")
         ev = self.evaluation_config
@@ -305,7 +304,7 @@ def _extract_mse(text: str) -> float | None:
 
 
 def _extract_val_mse_from_messages(messages: list) -> float | None:
-    """Get val_mse or cv_mse_mean from train_regressor tool JSON."""
+    """Получает val_mse или cv_mse_mean из JSON-ответа инструмента train_regressor."""
     for m in reversed(messages):
         if m.get("role") == "tool" and "content" in m:
             try:

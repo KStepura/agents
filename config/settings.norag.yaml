@@ -1,5 +1,3 @@
-# Как settings.yaml, но RAG выключен — для сравнения сценариев (Explorer без RAG-контекста).
-
 project:
   name: mws-ai-agents-2026
   competition_url: "https://www.kaggle.com/t/88dbc788cead475494fc76413a69f7ee"

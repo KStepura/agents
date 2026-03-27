@@ -1,5 +1,3 @@
-# Agents are implemented in explorer, engineer, builder, coordinator.
-# Import after implementation to avoid NotImplementedError in run().
 __all__ = ["ExplorerAgent", "EngineerAgent", "BuilderAgent", "CoordinatorAgent"]
 
 def __getattr__(name):

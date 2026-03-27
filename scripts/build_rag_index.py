@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 Построить векторный индекс RAG из каталога knowledge/ (Markdown/текст).
 

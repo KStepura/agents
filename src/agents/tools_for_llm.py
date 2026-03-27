@@ -1,6 +1,6 @@
 """
-Tool schemas (OpenAI function format) and executors for agents.
-All executors receive (name, args) and return a string for the LLM.
+Схемы инструментов (в формате функций OpenAI) и их исполнители для агентов.
+Все исполнители принимают (name, args) и возвращают строку для LLM.
 """
 
 from __future__ import annotations
@@ -13,7 +13,6 @@ from typing import Any, Callable
 from src.monitoring.logger import log_tool_call
 from src.security.guardrails import validate_tool_call
 
-# EDA: wrappers that return strings for LLM
 def _explorer_tools_executor(allowed_dirs: list[str], data_dir: str, agent: str = "explorer"):
     from src.tools import eda_tools
 

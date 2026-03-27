@@ -1,6 +1,6 @@
 """
-Index documents for RAG (e.g. EDA guides, Kaggle regression tips).
-Uses ChromaDB persistent store + sentence-transformers embeddings.
+Индексирует документы для RAG (например, руководства по EDA и советы по регрессии на Kaggle).
+Использует персистентное хранилище ChromaDB и эмбеддинги sentence-transformers.
 """
 
 from __future__ import annotations
@@ -28,7 +28,7 @@ def build_index(
     persist_path: str,
     embedding_model: str = "sentence-transformers/all-MiniLM-L6-v2",
 ) -> str:
-    """Index documents from knowledge_dir; save index to persist_path. Returns persist_path."""
+    """Индексирует документы из knowledge_dir и сохраняет индекс в persist_path. Возвращает persist_path."""
     import chromadb
 
     kdir = Path(knowledge_dir)

@@ -1,5 +1,5 @@
 """
-OpenRouter-compatible LLM client and agent loop with tool calling.
+Клиент LLM, совместимый с OpenRouter, и агентный цикл с вызовом инструментов.
 """
 
 from __future__ import annotations
@@ -11,11 +11,11 @@ from typing import Any, Callable
 try:
     from openai import OpenAI
 except ImportError:
-    OpenAI = None  # type: ignore
+    OpenAI = None
 
 
 def get_client(llm_config: dict) -> "OpenAI":
-    """Create OpenAI-compatible client for OpenRouter."""
+    """Создаёт клиент, совместимый с OpenAI API, для работы с OpenRouter."""
     if OpenAI is None:
         raise ImportError("Install openai: pip install openai")
     api_key = os.environ.get(
@@ -64,9 +64,11 @@ def run_chat_with_tools(
     max_tokens: int = 4096,
 ) -> tuple[str, list[dict], dict[str, int]]:
     """
-    Run chat with tool use loop. Returns (final assistant text, full messages, usage).
+    Запускает чат с циклом использования инструментов.
+    Возвращает (финальный ответ ассистента, полный список сообщений, usage).
+
     usage: prompt_tokens, completion_tokens, total_tokens, llm_api_calls.
-    tool_executor(name, arguments_dict) -> result string.
+    tool_executor(name, arguments_dict) -> строка результата.
     """
     messages: list[dict] = [
         {"role": "system", "content": system_prompt},

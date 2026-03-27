@@ -1,6 +1,6 @@
 """
-Store and load experiment runs: config, MSE, paths to artifacts.
-Enables benchmarking and reproducibility.
+Сохранение и загрузка запусков экспериментов: конфигурация, MSE, пути к артефактам.
+Обеспечивает бенчмаркинг и воспроизводимость.
 """
 
 from __future__ import annotations
@@ -19,7 +19,7 @@ def save_experiment(
     submission_path: str,
     artifacts_dir: str,
 ) -> str:
-    """Append experiment record as JSONL. Returns path to log file."""
+    """Добавляет запись об эксперименте в формате JSONL. Возвращает путь к файлу журнала."""
     rid = run_id or uuid.uuid4().hex[:12]
     log_path = Path(artifacts_dir) / "experiments.jsonl"
     log_path.parent.mkdir(parents=True, exist_ok=True)
@@ -36,7 +36,7 @@ def save_experiment(
 
 
 def list_experiments(artifacts_dir: str) -> list[dict[str, Any]]:
-    """List all recorded experiments for comparison."""
+    """Возвращает список всех сохранённых экспериментов для сравнения."""
     log_path = Path(artifacts_dir) / "experiments.jsonl"
     if not log_path.exists():
         return []

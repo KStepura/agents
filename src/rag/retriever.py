@@ -1,5 +1,5 @@
 """
-Retrieve relevant chunks for agent context (RAG).
+Извлекает релевантные фрагменты текста для контекста агента (RAG).
 """
 
 from __future__ import annotations
@@ -15,7 +15,7 @@ def retrieve(
     top_k: int = 5,
     embedding_model: str = "sentence-transformers/all-MiniLM-L6-v2",
 ) -> List[str]:
-    """Return top_k relevant text chunks for the query."""
+    """Возвращает top_k наиболее релевантных текстовых фрагментов по запросу."""
     import chromadb
 
     if not query or not query.strip():

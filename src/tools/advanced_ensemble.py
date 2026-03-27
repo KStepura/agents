@@ -82,7 +82,6 @@ def train_oof_stacking(
     meta_raw = {k: v for k, v in meta_cfg.items() if k != "model"}
     meta_params = validate_model_params(meta_name, meta_raw)
 
-    # OOF MSE мета-модели (вложенный K-fold по строкам train)
     meta_cv = KFold(n_splits=min(cv_folds, 5), shuffle=True, random_state=random_state + 1)
     meta_scores: list[float] = []
     for m_tr, m_va in meta_cv.split(oof):

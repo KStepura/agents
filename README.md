@@ -4,6 +4,9 @@
 
 - **Соревнование:** [пригласительная ссылка](https://www.kaggle.com/t/88dbc788cead475494fc76413a69f7ee)
 - **Метрика:** MSE (Mean Squared Error)
+- **Baseline (лидерборд):** 10986.9346
+- **Лучший прогон (по `config/settings.yaml`):** 10205.0493
+- **Лучший прогон без RAG (по `config/settings.norag.yaml`):** 10578.7835
 - **По умолчанию** (`config/settings.yaml`): два варианта **te_freq** (разный `rare_category_min_count`) + Optuna с **LightGBM и CatBoost**; режим **ohe** в список вариантов не входит (слишком широкая матрица, прогон может «зависнуть»). LLM Engineer не вызывается — см. `preprocessing_search`. Для цепочки с Engineer выключите `evaluation.hparam_search.preprocessing_search.enabled`.
 - **Данные:** табличный датасет (train.csv, test.csv), целевая переменная `target`
 
@@ -43,9 +46,8 @@
 ```bash
 cd /path/to/agents
 python3 -m venv .venv
-source .venv/bin/activate   # Windows: .venv\Scripts\activate
+source .venv/bin/activate
 pip install -r requirements.txt
-# lightgbm и catboost указаны в requirements.txt; xgboost — опционально (pip install xgboost)
 ```
 
 Скопируйте `.env.example` в `.env` и задайте `OPENROUTER_API_KEY` для запуска с LLM.
@@ -71,7 +73,6 @@ python scripts/build_rag_index.py
 ```bash
 source .venv/bin/activate
 python run.py
-# или: python run.py --data-dir data --config config/settings.yaml
 ```
 
 **Что делает `run.py` (автоматический прогон):** Coordinator вызывает Explorer (EDA + RAG по основному конфигу), затем либо **вложенный препроцессинг + Optuna** (`evaluation.hparam_search.preprocessing_search.enabled: true` — детерминированные фичи, **без LLM Engineer**), либо **Engineer** (LLM + инструменты `fit_preprocessor` / `transform`), затем **подбор гиперпараметров** (Optuna или сетка, если включено), затем **Builder** (при `use_best_only: true` — детерминированное обучение и `submission.csv` без LLM). В stderr — логи вызовов инструментов; в `artifacts/experiments.jsonl` и при `monitoring.run_summary_json` — в `artifacts/run_summary.json` — метрики и длительность.

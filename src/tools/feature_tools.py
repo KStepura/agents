@@ -1,6 +1,6 @@
 """
-Feature engineering tools for Engineer agent.
-Supports OHE (legacy) or te_freq: target encoding + frequency + date parts (better for tree models).
+Инструменты feature engineering для агента Engineer.
+Поддерживает OHE (устаревший режим) или te_freq: target encoding + частоты + признаки дат (лучше для моделей деревьев).
 """
 
 from __future__ import annotations
@@ -18,15 +18,12 @@ from sklearn.preprocessing import OneHotEncoder, StandardScaler
 
 from src.security.validation import validate_path
 
-# Колонки датасета: name, _id, host_name, location_cluster, location, lat, lon,
-# type_house, sum, min_days, amt_reviews, last_dt, avg_reviews, total_host, target
 NUMERIC_COLS = ["lat", "lon", "sum", "min_days", "amt_reviews", "avg_reviews", "total_host"]
 CATEGORICAL_COLS = ["host_name", "location_cluster", "location", "type_house"]
 DATE_COL = "last_dt"
 DROP_COLS = ["name", "_id"]
 
 TE_SMOOTHING = 10.0
-# Редкие категории (count < min на train) → одна метка для target/freq encoding
 OTHER_LABEL = "__OTHER__"
 
 
@@ -46,7 +43,7 @@ def _collapse_rare_test(series: pd.Series, kept_idx: pd.Index) -> pd.Series:
 
 
 def _parse_date_base(df: pd.DataFrame) -> tuple[pd.DataFrame, Any, Any]:
-    """Add last_dt_days, last_dt_month, last_dt_dow; return ref_min, date_fill for days."""
+    """Добавляет признаки last_dt_days, last_dt_month, last_dt_dow; возвращает ref_min и date_fill для расчёта дней."""
     ref_min = None
     date_fill = None
     out = df.copy()
@@ -63,7 +60,7 @@ def _parse_date_base(df: pd.DataFrame) -> tuple[pd.DataFrame, Any, Any]:
 
 
 def _apply_date_test(df: pd.DataFrame, ref_min: Any, date_fill: float) -> pd.DataFrame:
-    """Parse test dates using train ref_min (from artifact)."""
+    """Обрабатывает даты в test, используя ref_min из train (из артефакта)."""
     out = df.copy()
     if DATE_COL not in out.columns:
         return out
@@ -119,7 +116,7 @@ def _engineer_te_freq(
     global_means: dict[str, float] | None = None,
     fit: bool,
 ) -> pd.DataFrame:
-    """Add columns col__te, col__freq for each categorical; drop raw cat columns."""
+    """Добавляет колонки col__te и col__freq для каждой категориальной переменной; удаляет исходные категориальные столбцы."""
     out = X.copy()
     cat_cols = [c for c in CATEGORICAL_COLS if c in out.columns]
     if fit:
@@ -151,10 +148,10 @@ def fit_preprocessor(
     allowed_dirs: list[str],
 ) -> str:
     """
-    Fit preprocessing and save to artifacts.
-    config keys:
-      - pipeline_save_path (required)
-      - encoding: 'te_freq' (default) or 'ohe' — te_freq uses target+frequency encoding + date parts
+    Обучает препроцессинг и сохраняет его в artifacts.
+    Ключи config:
+    - pipeline_save_path (обязательный)
+    - encoding: 'te_freq' (по умолчанию) или 'ohe' — te_freq использует target+frequency encoding и признаки дат
     """
     path = validate_path(str(train_path), allowed_dirs, must_exist=True)
     train = pd.read_csv(path)
@@ -205,7 +202,6 @@ def fit_preprocessor(
         joblib.dump(payload, out_path)
         return str(out_path)
 
-    # --- legacy OHE path ---
     ref_min = None
     date_fill = None
     if DATE_COL in train.columns:
@@ -264,7 +260,7 @@ def transform_train_test(
     output_dir: str,
     allowed_dirs: list[str],
 ) -> dict[str, str]:
-    """Transform train/test and save processed CSVs."""
+    """Преобразует train/test и сохраняет обработанные CSV-файлы."""
     pipe_path = validate_path(str(pipeline_path), allowed_dirs, must_exist=True)
     train_path = validate_path(str(train_path), allowed_dirs, must_exist=True)
     test_path = validate_path(str(test_path), allowed_dirs, must_exist=True)

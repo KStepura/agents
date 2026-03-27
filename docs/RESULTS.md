@@ -3,7 +3,15 @@
 Метрика соревнования: **MSE** (Mean Squared Error).  
 Baseline с лидерборда: **10986.9346** — целевое значение для улучшения.
 
-Условия по умолчанию: препроцессинг `src/tools/feature_tools.py`, разбиение train 80% / 20% для валидации, `random_state=42`.
+Текущий лучший прогон (по `config/settings.yaml`): **10205.0493**  
+Лучший прогон без RAG (по `config/settings.norag.yaml`): **10578.7835**
+
+Цель: получить значение ниже baseline и обеспечить воспроизводимую процедуру сравнения моделей.
+
+Условия экспериментов:
+- train/val split: 80% / 20%
+- random_state = 42
+- единый пайплайн препроцессинга (`feature_tools.py`)
 
 ---
 
@@ -40,8 +48,10 @@ Baseline с лидерборда: **10986.9346** — целевое значен
 | 4 | `ohe` | LightGBM | default | 10815.46 | |
 | 5 | `ohe` | LightGBM | n=300, depth=8 | 10578.78 | прежний лучший с OHE |
 | 6 | `ohe` | XGBoost | lr=0.05, n=400 | 10726.41 | |
+| 7 | `te_freq` (rare_category_min_count=3) | LightGBM | n=300, max_depth=8 | **10205.05** | `settings.yaml` (RAG вкл + nested preprocessing_search) |
+| 8 | `te_freq` (rare_category_min_count=3) | LightGBM | n=300, max_depth=8 | 10578.78 | `settings.norag.yaml` (RAG выкл, preprocessing_search отключён) |
 
-**Примечание:** Val MSE на одном holdout **не сравним напрямую** между разными моделями без фиксированного протокола; для сравнения используйте `--cv-folds 5` на одном и том же `encoding`.
+**Примечание:** строки A–6 — исторические прогоны в разных условиях; строки 7–8 соответствуют текущим конфигам `settings.yaml` и `settings.norag.yaml`. Для строгого сравнения используйте единый протокол (`--cv-folds`, одинаковый encoding и одинаковые настройки оценки/поиска).
 
 **Примеры команд:**
 
@@ -96,14 +106,14 @@ LightGBM в сетке поддерживает **`num_leaves`**, **`min_child_s
 
 ## Сравнение сценариев (мультиагентная «архитектура», не только ML)
 
-Скрипт [scripts/compare_architectures.py](../scripts/compare_architectures.py) запускает два конфига подряд (по умолчанию `config/settings.yaml` с RAG и `config/settings.norag.yaml` без RAG), сохраняет копии submission в `submissions/submission_arch_rag_on.csv` и `submission_arch_rag_off.csv`, метки — в `experiments.jsonl` (`experiment_label`).
+Скрипт [scripts/compare_architectures.py](../scripts/compare_architectures.py) запускает два конфига подряд (по умолчанию `config/settings.yaml` с RAG и `config/settings.norag.yaml` без RAG), сохраняет копии submission в `submissions/submission_arch_rag_on.csv` и `submissions/submission_arch_rag_off.csv`, метки — в `experiments.jsonl` (`experiment_label`). Также поддерживается режим `--skip-rag-on`.
 
 | Сценарий | Что отличается |
 |----------|------------------|
 | RAG вкл | Explorer получает фрагменты из `knowledge/` при непустом индексе Chroma. |
 | RAG выкл | Тот же пайплайн, но без RAG-контекста в Explorer. |
 
-Остальное (препроцессинг, сетка гиперпараметров, robustness) держите **одинаковым** в обоих YAML для честного сравнения.
+Важно: `settings.yaml` и `settings.norag.yaml` отличаются не только `rag.enabled` — в `settings.yaml` включён nested `evaluation.hparam_search.preprocessing_search`, и дополнительно отличаются параметры поиска/оценки (например `hparam_search.eval_cv_folds`, `optuna.n_trials`). Поэтому это сравнение показывает эффект RAG плюс влияние разницы поиска; для “только RAG” нужно выровнять YAML-части, которые вы хотите держать фиксированными.
 
 ---
 
@@ -112,5 +122,3 @@ LightGBM в сетке поддерживает **`num_leaves`**, **`min_child_s
 1. Данные в `data/train.csv`, `data/test.csv`.
 2. Зависимости: `pip install -r requirements.txt` (для бустинга: `pip install xgboost lightgbm catboost`).
 3. Запуск команд из таблицы. Val MSE выводится в консоль; submission — в `submissions/submission.csv`.
-
-Новые эксперименты добавляйте в таблицу: препроцессинг, модель, параметры, Val MSE / CV MSE, команда.

@@ -1,5 +1,5 @@
 """
-Guardrails: no arbitrary code execution; only whitelisted tool calls.
+Ограничения (guardrails): запрет на выполнение произвольного кода; разрешены только вызовы инструментов из белого списка.
 """
 
 from __future__ import annotations
@@ -19,7 +19,6 @@ ALLOWED_TOOL_NAMES = frozenset(
     }
 )
 
-# Защита от бесконечных циклов вызовов инструментов в одном процессе
 _tool_calls_seen = 0
 DEFAULT_MAX_TOOL_CALLS_PER_RUN = 5000
 
@@ -30,12 +29,12 @@ def reset_tool_call_budget() -> None:
 
 
 def is_allowed_tool(name: str) -> bool:
-    """Check if tool name is in whitelist."""
+    """Проверяет, входит ли имя инструмента в белый список."""
     return name in ALLOWED_TOOL_NAMES
 
 
 def validate_tool_call(name: str, arguments: dict | None) -> None:
-    """Raise if tool is not allowed or arguments are invalid."""
+    """Вызывает ошибку, если инструмент не разрешён или аргументы некорректны."""
     global _tool_calls_seen
     if arguments is None:
         arguments = {}

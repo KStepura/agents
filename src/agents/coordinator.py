@@ -1,6 +1,6 @@
 """
-Coordinator: orchestrates Explorer → Engineer → (optional hparam grid) → Builder workflow.
-Pattern: Supervisor.
+Coordinator: оркестрирует процесс Explorer → Engineer → (опционально подбор гиперпараметров) → Builder.
+Паттерн: Supervisor.
 """
 
 from __future__ import annotations
@@ -22,7 +22,7 @@ def _merge_llm_usage(*parts: dict[str, int]) -> dict[str, int]:
 
 
 class CoordinatorAgent:
-    """Orchestrates the full pipeline and passes artifacts between agents."""
+    """Управляет выполнением полного пайплайна и передаёт артефакты между агентами."""
 
     def __init__(self, explorer, engineer, builder, llm_config: dict, config: dict | None = None):
         self.explorer = explorer
@@ -33,8 +33,8 @@ class CoordinatorAgent:
 
     def run(self, data_dir: str) -> dict[str, Any]:
         """
-        Run full pipeline: EDA → features → (optional hparam grid) → model → submission.
-        Returns: submission_path, val_mse, model_summary, agent_metrics, hparam_trials, ...
+        Запускает полный пайплайн: EDA → признаки → (опционально подбор гиперпараметров) → модель → submission.
+        Возвращает: submission_path, val_mse, model_summary, agent_metrics, hparam_trials, ...
         """
         eda_artifact = self.explorer.run(data_dir)
 

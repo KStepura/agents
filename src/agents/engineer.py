@@ -1,6 +1,6 @@
 """
-Engineer agent: feature engineering and preprocessing from EDA report.
-Pattern: Chain-of-Thought + Tool Use.
+Агент Engineer: выполняет feature engineering и препроцессинг на основе EDA-отчёта.
+Паттерн: Chain-of-Thought + Tool Use.
 """
 
 from __future__ import annotations
@@ -12,8 +12,7 @@ from src.llm.client import get_client, run_chat_with_tools
 
 
 class EngineerAgent:
-    """Agent that builds feature pipeline and saves processed data for Builder."""
-
+    """Агент, который строит пайплайн признаков и сохраняет обработанные данные для Builder."""
     def __init__(
         self,
         llm_config: dict,
@@ -32,7 +31,8 @@ class EngineerAgent:
 
     def run(self, eda_artifact: dict, feedback_message: str | None = None) -> dict:
         """
-        Produce preprocessing and processed data paths. Returns train_path, test_path, pipeline_path.
+        Формирует пайплайн препроцессинга и пути к обработанным данным.
+        Возвращает: train_path, test_path, pipeline_path.
         feedback_message: если задан — предыдущая проверка артефактов не прошла; агент должен исправить пайплайн.
         """
         enc = self.pipeline_config.get("encoding", "te_freq")

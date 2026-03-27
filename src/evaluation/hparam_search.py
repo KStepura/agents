@@ -1,6 +1,6 @@
 """
-Grid / Cartesian search over model configs on processed train (train_regressor).
-Used by Coordinator after Engineer when evaluation.hparam_search.enabled is true.
+Поиск по сетке / декартовому произведению конфигураций моделей на обработанном train (train_regressor).
+Используется Coordinator после Engineer, если evaluation.hparam_search.enabled = true.
 """
 
 from __future__ import annotations
@@ -11,7 +11,6 @@ from typing import Any
 
 from src.tools import model_tools
 
-# Параметры, которые передаются в validate_model_params / train_regressor
 PARAM_KEYS = (
     "n_estimators",
     "max_depth",
@@ -124,9 +123,9 @@ def run_hparam_grid(
     evaluation_cfg: dict[str, Any],
 ) -> tuple[dict[str, Any] | None, list[dict[str, Any]]]:
     """
-    Evaluate each grid row with fit_full_train=False (holdout or CV per evaluation_cfg).
-    evaluation_cfg may contain _hparam_cv_folds to override cv_folds только для поиска.
-    Returns (best, all_trials) where best has keys: model, params, val_mse, trial_index.
+    Оценивает каждую конфигурацию из сетки с fit_full_train=False (holdout или CV в соответствии с evaluation_cfg).
+    evaluation_cfg может содержать _hparam_cv_folds для переопределения cv_folds только в процессе поиска.
+    Возвращает (best, all_trials), где best содержит: model, params, val_mse, trial_index.
     """
     if not grid:
         return None, []

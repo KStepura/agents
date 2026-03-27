@@ -1,6 +1,6 @@
 """
-Model training and submission tools for Builder agent.
-Validation: only allowed model names and param ranges.
+Инструменты для обучения моделей и формирования submission для агента Builder.
+Валидация: допускаются только разрешённые имена моделей и диапазоны параметров.
 """
 
 from __future__ import annotations
@@ -20,7 +20,7 @@ from src.security.validation import validate_model_params, validate_path
 
 
 def _get_model(name: str, params: dict[str, Any]):
-    """Return model instance. Params must be sanitized via validate_model_params."""
+    """Возвращает экземпляр модели. Параметры должны быть предварительно очищены через validate_model_params."""
     name = name.lower()
     if name == "ridge":
         return Ridge(
@@ -95,10 +95,12 @@ def train_regressor(
     fit_full_train: bool = False,
 ) -> dict[str, Any]:
     """
-    Train a regressor and save.
-    If val_path is None and not fit_full_train, splits train_path by val_ratio.
-    If cv_folds >= 2, runs KFold CV on full train and adds cv_mse_mean / cv_mse_std.
-    If fit_full_train, fits on all rows (for final submission); val_mse may come from CV if requested.
+    Обучает регрессионную модель и сохраняет её.
+
+    Если val_path не задан и fit_full_train=False, train_path разбивается по val_ratio.
+    Если cv_folds >= 2, выполняется KFold CV на всём train и добавляются cv_mse_mean / cv_mse_std.
+    Если fit_full_train=True, модель обучается на всех данных (для финального submission);
+    в этом случае val_mse может быть получен через CV (если включено).
     """
     params = validate_model_params(name, params or {})
     params["random_state"] = random_state
@@ -171,13 +173,13 @@ def make_submission(
     robustness: dict[str, Any] | None = None,
 ) -> str:
     """
-    Generate submission CSV with columns index, prediction. Returns output_path.
+    Генерирует CSV-файл submission с колонками index, prediction. Возвращает output_path.
 
-    robustness (optional):
-      clip_predictions: if True, clip predictions to target quantiles from train_path
-      clip_quantiles: (low, high) defaults (0.005, 0.995)
-      train_path: required for clipping / feature bounds
-      clip_features_to_train_range: clip numeric test features to [min,max] from train (mitigates drift/outliers)
+    robustness (опционально):
+    clip_predictions: если True, обрезает предсказания по квантилям target из train_path
+    clip_quantiles: (low, high), по умолчанию (0.005, 0.995)
+    train_path: обязателен для clipping и границ признаков
+    clip_features_to_train_range: обрезает числовые признаки test в диапазоне [min, max] train (снижает влияние дрейфа и выбросов)
     """
     model_path = validate_path(str(model_path), allowed_dirs, must_exist=True)
     test_path = validate_path(str(test_path), allowed_dirs, must_exist=True)
@@ -227,7 +229,7 @@ def write_submission_array(
     allowed_dirs: list[str],
     robustness: dict[str, Any] | None = None,
 ) -> str:
-    """Write submission CSV from a prediction vector (same clipping rules as make_submission)."""
+    """Записывает submission CSV из вектора предсказаний (с теми же правилами clipping, что и в make_submission)."""
     output_path = validate_path(str(output_path), allowed_dirs, must_exist=False)
     pred = np.asarray(pred, dtype=float).ravel()
     robustness = robustness or {}

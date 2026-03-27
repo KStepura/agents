@@ -38,7 +38,7 @@
 
 Требование курса: в агентной архитектуре должен быть **цикл улучшения** по результату предыдущего шага. В проекте это не «исполнение произвольного кода», а **итерации с проверкой артефактов и метрик**:
 
-1. **Engineer → проверка артефактов** ([`src/evaluation/artifact_validation.py`](src/evaluation/artifact_validation.py), [`src/evaluation/code_validation.py`](src/evaluation/code_validation.py)): после вызова Engineer Coordinator проверяет CSV (файлы, `target`, согласованность колонок), при необходимости — **синтаксис `*.py`** в `artifacts/` и **корректность `preprocessor.joblib`** (объект `sklearn.pipeline.Pipeline` в сохранённом словаре). При ошибке Engineer вызывается **повторно** с явным текстом замечаний (`agents.engineer.artifact_validation`). Токены LLM по раундам **суммируются** в `llm_usage`.
+1. **Engineer → проверка артефактов** ([`src/evaluation/artifact_validation.py`](src/evaluation/artifact_validation.py), [`src/evaluation/code_validation.py`](src/evaluation/code_validation.py)): после вызова Engineer Coordinator проверяет CSV (файлы, `target`, согласованность колонок), при необходимости — **синтаксис `*.py`** в `artifacts/` и **корректность `preprocessor.joblib`** (объект `sklearn.pipeline.Pipeline` в сохранённом словаре). При ошибке Coordinator формирует текст ошибок и повторяет вызов Engineer **до `agents.engineer.artifact_validation.max_rounds`**, передавая его как `feedback_message` (при `strict: true` пайплайн останавливается после последнего раунда). Токены LLM по раундам **суммируются** в `llm_usage`.
 2. **Builder (LLM-режим)** ([`src/agents/builder.py`](src/agents/builder.py)): **Critic** — если MSE выше порога или задано несколько раундов, следующий user-message содержит подсказку сменить модель/гиперпараметры.
 3. **Подбор модели**: Optuna / сетка + политика `prefer_boosting` — обратная связь по **метрике CV**, а не по тексту.
 
@@ -128,9 +128,9 @@
 ## Безопасность и надёжность
 
 - **Input validation**: все пути — нормализованные и проверенные (no path traversal); параметры моделей — в белом списке или в ограниченных диапазонах.
-- **Guardrails**: 
-  - запрет выполнения произвольного кода от LLM (только вызов заранее объявленных инструментов);
-  - при использовании `exec`/`eval` — только в sandbox или запрет.
+- **Guardrails**:
+  - LLM может вызывать только заранее объявленные инструменты (whitelist), а `validate_tool_call` проверяет допустимость имени и валидность аргументов (в т.ч. валидации строк/путей из `sanitize.py`);
+  - лимит числа tool-call'ов за прогон и сброс бюджетов в `run.py` (`reset_tool_call_budget`).
 - **Мониторинг**: логирование вызовов инструментов (время), метрик MSE; в `run.py` — сводка **токенов и числа вызовов API** по агентам в `experiments.jsonl` (`agent_metrics`); опционально **`artifacts/run_summary.json`** (`monitoring.run_summary_json`) — длительность прогона и ключевые поля результата.
 - **Устойчивость выдачи** (минимальный уровень для отчёта): в [`model_tools.make_submission`](src/tools/model_tools.py) опционально **клип предсказаний** по квантилям `target` на train и опционально **ограничение числовых признаков теста** диапазоном train (см. `robustness` в `config/settings.yaml`).
 

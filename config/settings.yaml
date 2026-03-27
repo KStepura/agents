@@ -1,93 +1,75 @@
-# Конфигурация мультиагентной системы для Kaggle-регрессии (MSE)
-
 project:
   name: mws-ai-agents-2026
   competition_url: "https://www.kaggle.com/t/88dbc788cead475494fc76413a69f7ee"
   metric: MSE
-  baseline_mse_to_beat: 10986.9346   # исходный baseline
-  best_mse_achieved: 10578.7835     # лучший достигнутый результат (обновить после новых запусков)
-  best_run:                          # конфиг лучшего запуска (для воспроизведения)
+  baseline_mse_to_beat: 10986.9346
+  best_mse_achieved: 10205.0493
+  best_run:
     model: lightgbm
     n_estimators: 300
     max_depth: 8
-    # команда: python scripts/run_pipeline_manual.py --data-dir data --model lightgbm --n-estimators 300 --max-depth 8
 
 paths:
-  data_dir: "data"           # каталог с train.csv, test.csv, sample_submission.csv
+  data_dir: "data"
   artifacts_dir: "artifacts"
   submissions_dir: "submissions"
   knowledge_dir: "knowledge"
 
-# Препроцессинг (используется run.py и агент Engineer через инструменты)
 pipeline:
-  encoding: te_freq          # te_freq | ohe — для сравнения с историческим OHE см. docs/RESULTS.md
-  # Категории с частотой < порога на train схлопываются в __OTHER__ (только te_freq)
+  encoding: te_freq
   rare_category_min_count: 3
 
-# LLM (OpenRouter)
 llm:
   provider: openrouter
   base_url: "https://openrouter.ai/api/v1"
-  model: "qwen/qwen-2.5-72b-instruct"   # или другой через OpenRouter
+  model: "qwen/qwen-2.5-72b-instruct"
   api_key_env: OPENROUTER_API_KEY
   temperature: 0.2
   max_tokens: 4096
 
-# RAG (индекс при необходимости собирается в run.py из knowledge/)
 rag:
   enabled: true
-  persist_path: "artifacts/chroma_rag"   # каталог индекса Chroma
+  persist_path: "artifacts/chroma_rag"
   embedding_model: "sentence-transformers/all-MiniLM-L6-v2"
   top_k: 5
 
-# Агенты
 agents:
   explorer:
     system_prompt_file: "config/prompts/explorer_system.txt"
   engineer:
     system_prompt_file: "config/prompts/engineer_system.txt"
-    # Feedback loop: проверка train_processed/test_processed → при сбое повтор Engineer с замечаниями
     artifact_validation:
       enabled: true
-      max_rounds: 3          # попыток (включая первый вызов)
-      strict: false           # true = RuntimeError если после всех раундов всё ещё ошибки
+      max_rounds: 3
+      strict: false
       min_train_rows: 5
       min_test_rows: 1
-      check_python_scripts: true      # py_compile для *.py в artifacts (если появятся)
-      check_preprocessor_joblib: true # загрузка preprocessor.joblib + sklearn Pipeline
+      check_python_scripts: true
+      check_preprocessor_joblib: true
   builder:
     system_prompt_file: "config/prompts/builder_system.txt"
     critic_max_iterations: 3
-    # Если val/cv MSE ≤ порога — ранний выход из цикла Critic (только LLM Builder)
     mse_threshold: null
-    # true: всегда до critic_max_iterations раундов; false: при mse_threshold=null — один раунд LLM
     critic_iterate_without_threshold: false
 
-# Мониторинг прогона (длительность, метрики — для отчёта и сравнения прогонов)
 monitoring:
-  run_summary_json: true   # artifacts/run_summary.json
+  run_summary_json: true
 
-# Безопасность
 security:
   allowed_data_dirs: ["data", "artifacts", "submissions"]
   max_file_size_mb: 500
   forbid_exec: true
 
-# Оценка и финальное обучение (run.py → Builder / train_regressor)
 evaluation:
   val_ratio: 0.2
-  cv_folds: 5               # финальная модель: CV + fit_full_train (см. ниже)
+  cv_folds: 5
   fit_full_train: true
   random_state: 42
-  # mode: grid (сетка+cartesian) | optuna — нужен: pip install optuna
   hparam_search:
     mode: optuna
     enabled: true
-    use_best_only: true     # финальное обучение + submission без LLM Builder по лучшей точке поиска
-    eval_cv_folds: 5        # CV на этапе поиска (стабильнее MSE; дороже по времени)
-    # Внешний цикл: несколько препроцессингов + Optuna на каждом (без LLM Engineer).
-    # Два варианта te_freq (ohe даёт огромную размерность и часто «зависает» на Optuna — не включаем в дефолт).
-    # Суммарный бюджет: len(variants) × n_trials (2×18=36).
+    use_best_only: true
+    eval_cv_folds: 5
     preprocessing_search:
       enabled: true
       variants:
@@ -106,45 +88,30 @@ evaluation:
       num_leaves_high: 127
       min_child_samples_low: 5
       min_child_samples_high: 100
-      lgbm_regularization: true   # subsample, colsample_bytree, reg_alpha, reg_lambda
+      lgbm_regularization: true
       seed: 42
-    # Альтернатива: mode: grid + grid / cartesian / max_trials (см. docs/RESULTS.md)
     selection_policy:
       prefer_boosting: true
       tie_relative_tolerance: 0.05
 
-  # OOF-стекинг: несколько базовых моделей + мета на out-of-fold (приоритет над blend и pseudo, если enabled)
   stacking:
     enabled: false
-    # null → evaluation.cv_folds (или 5)
     cv_folds: null
     meta:
       model: ridge
       alpha: 1.0
     base_models: []
-    # Пример:
-    # base_models:
-    #   - model: lightgbm
-    #     n_estimators: 200
-    #     max_depth: 6
-    #     learning_rate: 0.05
-    #   - model: ridge
-    #     alpha: 10.0
 
-  # Псевдо-лейблы на test (после стекинга, до blend; модель/параметры — из hparam_best)
   pseudo_labels:
     enabled: false
     rounds: 2
-    # null → evaluation.cv_folds; 0 или 1 — без диагностического CV на чистом train
     cv_folds: null
 
-  # Усреднение предсказаний на test по K моделям (K-fold blend; при enabled игнорируется одиночный fit_full_train для сабмита)
   ensemble:
     enabled: true
     kfold_blend_test: true
     n_folds: 5
 
-# Устойчивость: по умолчанию без клипа предсказаний (лучше для Kaggle LB); включите при выбросах
 robustness:
   clip_predictions: false
   clip_quantiles: [0.005, 0.995]

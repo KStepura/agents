@@ -1,9 +1,9 @@
 """
-Optuna hyperparameter search (Bayesian optimization) for tabular regression.
-Requires: pip install optuna
+Поиск гиперпараметров с помощью Optuna (байесовская оптимизация) для табличной регрессии.
+Требуется: pip install optuna
 
-Поддержка: одна модель или список `optuna.models` (например lightgbm + catboost),
-доп. регуляризация LightGBM (reg_alpha, reg_lambda, subsample, colsample_bytree).
+Поддержка: одна модель или список `optuna.models` (например, lightgbm + catboost),
+дополнительная регуляризация для LightGBM (reg_alpha, reg_lambda, subsample, colsample_bytree).
 """
 
 from __future__ import annotations
@@ -62,7 +62,6 @@ def _suggest_params(trial: Any, model_name: str, oc: dict[str, Any]) -> dict[str
     elif model_name == "ridge":
         params["alpha"] = trial.suggest_float("alpha", 1e-4, 100.0, log=True)
     elif model_name == "catboost":
-        # Те же имена гиперпараметров, что у LightGBM, чтобы Optuna не дублировала пространство поиска.
         params["n_estimators"] = trial.suggest_int(
             "n_estimators", int(oc.get("n_estimators_low", 100)), int(oc.get("n_estimators_high", 500))
         )
@@ -112,7 +111,7 @@ def run_optuna_search(
     hparam_cfg: dict[str, Any],
 ) -> tuple[dict[str, Any] | None, list[dict[str, Any]]]:
     """
-    Minimize CV / holdout MSE via Optuna. Returns (best, trials_log) same shape as grid search.
+    Минимизирует MSE (CV или holdout) с помощью Optuna. Возвращает (best, trials_log) в том же формате, что и grid search.
     hparam_cfg.optuna: model или models, n_trials, seed, диапазоны.
     """
     try:

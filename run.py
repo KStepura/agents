@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 Точка входа: запуск мультиагентного pipeline для Kaggle-регрессии (MSE).
 
@@ -16,14 +15,14 @@ from pathlib import Path
 
 
 def load_config(config_path: str) -> dict:
-    """Load YAML config."""
+    """Загружает конфигурацию из YAML-файла."""
     import yaml
     with open(config_path) as f:
         return yaml.safe_load(f)
 
 
 def load_system_prompt(prompt_path: str, root: Path) -> str:
-    """Load system prompt from file (relative to project root)."""
+    """Загружает системный промпт из файла (относительно корня проекта)."""
     path = root / prompt_path if not Path(prompt_path).is_absolute() else Path(prompt_path)
     if path.exists():
         return path.read_text().strip()
@@ -57,7 +56,6 @@ def main() -> None:
             "Place train.csv, test.csv in data/."
         )
 
-    # Load .env for OPENROUTER_API_KEY
     try:
         from dotenv import load_dotenv
         load_dotenv(root / ".env")

@@ -8,7 +8,6 @@ from __future__ import annotations
 import re
 from typing import Any
 
-# Сообщения модели не должны попадать в пути/имена файлов как «инструкции»
 _SUSPICIOUS_IN_PATH = re.compile(
     r"(?i)(ignore\s+(previous|all)\s+instructions|system\s*prompt|</?\s*script)",
 )

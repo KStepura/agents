@@ -1,6 +1,6 @@
 """
-Explorer agent: EDA and structured report for the Engineer.
-Pattern: ReAct (Reasoning + Act) with Tool Use.
+Агент Explorer: выполняет EDA и формирует структурированный отчёт для Engineer.
+Паттерн: ReAct (Reasoning + Act) с использованием инструментов.
 """
 
 from __future__ import annotations
@@ -13,7 +13,7 @@ from src.llm.client import get_client, run_chat_with_tools
 
 
 class ExplorerAgent:
-    """Agent that performs EDA and produces an artifact for the Engineer."""
+    """Агент, который проводит EDA и создаёт артефакт для Engineer."""
 
     def __init__(
         self,
@@ -30,7 +30,7 @@ class ExplorerAgent:
         self.project_root = project_root or Path.cwd()
 
     def run(self, data_dir: str) -> dict:
-        """Run EDA on train/test in data_dir. Returns {"report_path": ..., "summary": ...}."""
+        """Выполняет EDA для train/test в data_dir. Возвращает {"report_path": ..., "summary": ...}."""
         data_dir = str(Path(data_dir).resolve())
         rag_hint = self._rag_context()
 

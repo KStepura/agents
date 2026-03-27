@@ -1,5 +1,5 @@
 """
-Input validation for tool calls: paths, model params, etc.
+Валидация входных данных для вызовов инструментов: пути, параметры моделей и т.д.
 """
 
 from __future__ import annotations
@@ -10,7 +10,7 @@ ALLOWED_MODELS = frozenset({"ridge", "random_forest", "xgboost", "lightgbm", "ca
 
 
 def validate_path(path: str, allowed_dirs: list[str], must_exist: bool = True) -> Path:
-    """Ensure path is under one of allowed_dirs and optionally exists."""
+    """Проверяет, что путь находится в одном из allowed_dirs и при необходимости существует."""
     resolved = Path(path).resolve()
     for d in allowed_dirs:
         base = Path(d).resolve()
@@ -26,8 +26,8 @@ def validate_path(path: str, allowed_dirs: list[str], must_exist: bool = True) -
 
 def validate_model_params(name: str, params: dict | None) -> dict:
     """
-    Whitelist model name and bound hyperparameters.
-    Returns a sanitized dict safe to pass to model_tools._get_model / train_regressor.
+    Проверяет имя модели по белому списку и ограничивает гиперпараметры допустимыми значениями.
+    Возвращает очищенный словарь, безопасный для передачи в model_tools._get_model / train_regressor.
     """
     if params is None:
         params = {}
